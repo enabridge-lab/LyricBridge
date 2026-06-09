@@ -16,10 +16,12 @@ cd "$ROOT"
 echo "▶ LyricBridge — starting on GPU…"
 
 # 1) Web UI (static site in Docker) -----------------------------------------
-docker compose up -d web >/dev/null 2>&1 || true
+# --no-deps: start ONLY web. `web` depends_on `asr`, which has build:./server,
+# so a plain `up web` would build/start the CPU API too (slow + fights :8000).
+docker compose up -d --no-deps web >/dev/null 2>&1 || true
 echo "  ✓ web UI            http://localhost:8080"
 
-# 2) Make sure the CPU Docker API isn't holding port 8000 -------------------
+# 2) Make sure the CPU Docker API isn't holding port 8000 (in case it was up) -
 docker compose stop asr >/dev/null 2>&1 || true
 
 # 3) GPU API on the host ----------------------------------------------------
