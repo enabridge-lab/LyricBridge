@@ -117,6 +117,11 @@ _JOBS_DIR = Path(tempfile.mkdtemp(prefix="karaoke_jobs_"))
 _jobs_lock = threading.Lock()
 _jobs: dict[str, tuple[Path, float]] = {}  # job_id -> (instrumental path, expiry)
 
+# Vocal stems: TTL-only cleanup (no pop-on-take, เพื่อให้ re-fetch ได้)
+_VOCAL_DIR = Path(tempfile.mkdtemp(prefix="karaoke_vocals_"))
+_vocal_jobs_lock = threading.Lock()
+_vocal_jobs: dict[str, tuple[Path, float]] = {}  # job_id -> (vocals_path, expiry)
+
 
 def _store_instrumental(src: Path) -> str:
     """Move an instrumental into the job store, return its opaque job_id."""
@@ -142,6 +147,31 @@ def _take_instrumental(job_id: str) -> Path | None:
     path, expiry = entry
     if time.time() > expiry or not path.exists():
         shutil.rmtree(path.parent, ignore_errors=True)
+        return None
+    return path
+
+
+def _store_vocal(job_id: str, src: Path) -> None:
+    """Move a vocal stem into the vocal store under the given job_id."""
+    dest_dir = _VOCAL_DIR / job_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / "vocals.wav"
+    shutil.move(str(src), str(dest))
+    with _vocal_jobs_lock:
+        _vocal_jobs[job_id] = (dest, time.time() + INSTRUMENTAL_TTL_SEC)
+
+
+def _get_vocal(job_id: str) -> Path | None:
+    """Return the vocal path for job_id if it exists and hasn't expired, else None."""
+    with _vocal_jobs_lock:
+        entry = _vocal_jobs.get(job_id)
+    if entry is None:
+        return None
+    path, expiry = entry
+    if time.time() > expiry or not path.exists():
+        shutil.rmtree(path.parent, ignore_errors=True)
+        with _vocal_jobs_lock:
+            _vocal_jobs.pop(job_id, None)
         return None
     return path
 
@@ -190,6 +220,17 @@ def _sweep_jobs() -> None:
                 expired.append((jid, path))
                 _jobs.pop(jid, None)
     for _, path in expired:
+        shutil.rmtree(path.parent, ignore_errors=True)
+    # Sweep expired vocal stems
+    with _vocal_jobs_lock:
+        expired_vocals = [
+            (jid, path)
+            for jid, (path, expiry) in list(_vocal_jobs.items())
+            if now > expiry
+        ]
+        for jid, _ in expired_vocals:
+            _vocal_jobs.pop(jid, None)
+    for _, path in expired_vocals:
         shutil.rmtree(path.parent, ignore_errors=True)
     # drop stale progress entries too
     with _progress_lock:
@@ -492,11 +533,20 @@ def karaoke(
         # Park the instrumental for the follow-up GET (moved OUT of tmpdir so the
         # finally cleanup below doesn't take it).
         job_id = _store_instrumental(result.instrumental_path)
+
+        # Store vocal stem for the guide feature.
+        try:
+            _store_vocal(job_id, result.vocals_path)
+        except Exception:
+            logger.warning("could not store vocal stem for job %s", job_id)
+
         _set_progress(pid, "done")
 
         payload = resp.model_dump()
         payload["job_id"] = job_id
         payload["instrumental_url"] = f"/instrumental/{job_id}"
+        if _get_vocal(job_id) is not None:
+            payload["vocal_url"] = f"/vocal/{job_id}"
         return JSONResponse(content=payload)
     finally:
         # Remove the upload + vocal stem + work files (instrumental already moved).
@@ -522,6 +572,19 @@ def get_instrumental(job_id: str):
         media_type="audio/wav",
         filename="instrumental.wav",
         background=BackgroundTask(shutil.rmtree, path.parent, ignore_errors=True),
+    )
+
+
+@app.get("/vocal/{job_id}")
+def get_vocal(job_id: str):
+    """Stream a /karaoke job's vocal stem (TTL-bounded, re-fetchable)."""
+    path = _get_vocal(job_id)
+    if path is None:
+        return _err(404, "vocal not found or expired", "vocal")
+    return FileResponse(
+        path,
+        media_type="audio/wav",
+        filename="vocals.wav",
     )
 
 

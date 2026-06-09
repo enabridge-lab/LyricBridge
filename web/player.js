@@ -214,6 +214,12 @@ function init() {
     // sync offset (§3) + nudge (§5)
     syncOffset: $("syncOffset"), syncOffsetVal: $("syncOffsetVal"),
     nudgeBack: $("nudgeBack"), nudgeFwd: $("nudgeFwd"),
+    // vocal guide
+    vocalGuidePanel: $("vocalGuidePanel"),
+    vocalGuideToggle: $("vocalGuideToggle"),
+    vocalVolume: $("vocalVolume"),
+    vocalVolumeVal: $("vocalVolumeVal"),
+    vocalSliderRow: $("vocalSliderRow"),
   };
 
   let model = { words: [], lines: [] };
@@ -221,6 +227,8 @@ function init() {
   let wordSpans = [];
   let lastActive = -1;
   let editMode = false;
+  let vocalAudio = null;
+  let vocalGuideVol = Number(localStorage.getItem("vocalGuideVol") ?? "") || 0.3;
   // Constant sync offset (ms), persisted per browser. + = lyrics lead the audio.
   let syncOffsetMs = Number(localStorage.getItem("syncOffsetMs")) || 0;
 
@@ -269,6 +277,44 @@ function init() {
     );
   }
 
+  function _wireVocalSync() {
+    if (!vocalAudio) return;
+    els.audio.addEventListener("seeked", () => {
+      if (!vocalAudio) return;
+      vocalAudio.currentTime = els.audio.currentTime;
+    });
+    els.audio.addEventListener("play", () => {
+      if (!vocalAudio) return;
+      vocalAudio.currentTime = els.audio.currentTime;
+      vocalAudio.play().catch(() => {/* autoplay policy — ignored */});
+    });
+    els.audio.addEventListener("pause", () => {
+      vocalAudio?.pause();
+    });
+  }
+
+  function loadVocalGuide(blob) {
+    if (vocalAudio) {
+      vocalAudio.pause();
+      URL.revokeObjectURL(vocalAudio.src);
+      vocalAudio = null;
+    }
+    vocalAudio = new Audio();
+    vocalAudio.src = URL.createObjectURL(blob);
+    vocalAudio.volume = vocalGuideVol;
+    _wireVocalSync();
+    if (els.vocalGuidePanel) {
+      els.vocalGuidePanel.hidden = false;
+      if (els.vocalVolume) {
+        els.vocalVolume.value = String(Math.round(vocalGuideVol * 100));
+        if (els.vocalVolumeVal) els.vocalVolumeVal.textContent = Math.round(vocalGuideVol * 100) + "%";
+      }
+      if (els.vocalGuideToggle) els.vocalGuideToggle.checked = false;
+      vocalAudio.volume = 0;
+      if (els.vocalSliderRow) els.vocalSliderRow.style.opacity = "0.4";
+    }
+  }
+
   // --- ONE-UPLOAD flow (Step 0): full song -> separate + transcribe + play ---
   if (els.songFile) {
     els.songFile.addEventListener("change", (e) => runKaraoke(e.target.files[0]));
@@ -303,6 +349,18 @@ function init() {
       loadAudio(new File([blob], "instrumental.wav", { type: blob.type || "audio/wav" }));
       markLoaded(els.step0, els.songDrop, els.songName, file);
       loadModel(payload); // renders lyrics + reveals tools
+      // Vocal guide: fetch the vocal stem if the server provided one
+      if (payload.vocal_url) {
+        try {
+          const vocalRes = await fetch(base.replace(/\/$/, "") + payload.vocal_url);
+          if (vocalRes.ok) {
+            const vocalBlob = await vocalRes.blob();
+            loadVocalGuide(new File([vocalBlob], "vocals.wav", { type: vocalBlob.type || "audio/wav" }));
+          }
+        } catch {
+          // Vocal fetch failed — degrade silently (guide panel stays hidden)
+        }
+      }
     } catch (err) {
       clearInterval(poll);
       if (els.songName) els.songName.textContent = "";
@@ -428,6 +486,33 @@ function init() {
   });
   els.nudgeBack?.addEventListener("click", () => nudgeActiveWord(-50));
   els.nudgeFwd?.addEventListener("click", () => nudgeActiveWord(50));
+
+  // --- vocal guide panel ---
+  if (els.vocalGuideToggle) {
+    els.vocalGuideToggle.addEventListener("change", (e) => {
+      if (!vocalAudio) return;
+      const on = e.target.checked;
+      if (on) {
+        vocalAudio.volume = vocalGuideVol;
+        if (els.vocalSliderRow) els.vocalSliderRow.style.opacity = "1";
+      } else {
+        vocalAudio.volume = 0;
+        if (els.vocalSliderRow) els.vocalSliderRow.style.opacity = "0.4";
+      }
+    });
+  }
+
+  if (els.vocalVolume) {
+    els.vocalVolume.value = String(Math.round(vocalGuideVol * 100));
+    els.vocalVolume.addEventListener("input", (e) => {
+      vocalGuideVol = Number(e.target.value) / 100;
+      if (els.vocalVolumeVal) els.vocalVolumeVal.textContent = e.target.value + "%";
+      localStorage.setItem("vocalGuideVol", String(vocalGuideVol));
+      if (vocalAudio && els.vocalGuideToggle?.checked) {
+        vocalAudio.volume = vocalGuideVol;
+      }
+    });
+  }
 
   els.audioFile.addEventListener("change", (e) => {
     const file = e.target.files[0];
