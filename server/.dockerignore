@@ -1,0 +1,11 @@
+# Keep the build context tiny — only requirements.txt + app/ are COPYed.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.omc/
+tests/
+install.log
+smoke.log
+*.log

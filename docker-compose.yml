@@ -1,0 +1,52 @@
+# Self-host entrypoint: `docker compose up` runs the whole thing on CPU.
+#   - asr  : FastAPI service — separate / transcribe / render  (no GPU required)
+#   - web  : static karaoke player on http://localhost:8080
+# Set ASR_MODEL to swap in a Thai-tuned model (Typhoon / GigaSpeech 2) without
+# code changes. See docs/RUN_IT_YOURSELF.md.
+services:
+  asr:
+    build: ./server
+    image: lyricbridge-server:m3
+    ports:
+      - "8000:8000"
+    environment:
+      # Thai-tuned Whisper published to HF Hub (auto-downloaded + cached on first
+      # run). Override with ASR_MODEL=large-v3 for vanilla Whisper, or a local
+      # path. See docs/REPRODUCIBLE_CLONE.md for publishing your own.
+      ASR_MODEL: ${ASR_MODEL:-champkrap/whisper-th-large-v3-ct2}
+      # Pin to an exact commit hash for output that stays identical over time.
+      # Empty = latest (works, but a future model update would change results).
+      # Paste the hash from the model's HF "Files and versions" page here.
+      ASR_MODEL_REVISION: ${ASR_MODEL_REVISION:-}
+      ASR_DEVICE: cpu
+      # WhisperX has no default Thai align model -> supply a Thai wav2vec2.
+      ALIGN_MODEL: ${ALIGN_MODEL:-airesearch/wav2vec2-large-xlsr-53-th}
+      SEPARATION_MODEL: ${SEPARATION_MODEL:-htdemucs_ft.yaml}
+      SEPARATION_DEVICE: cpu
+      SEPARATION_MODEL_DIR: /app/models/audio-separator
+      DEMUCS_SEGMENT: ${DEMUCS_SEGMENT:-7}
+      RENDER_FONT: ${RENDER_FONT:-Sarabun}
+      LOG_LEVEL: INFO
+    # Cache model downloads between runs (whisper/align + separator weights).
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+      - separator-cache:/app/models/audio-separator
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else sys.exit(1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  web:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+    depends_on:
+      - asr
+
+volumes:
+  hf-cache:
+  separator-cache:

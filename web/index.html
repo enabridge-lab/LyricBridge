@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LyricBridge — ร้องตามเนื้อทีละคำ</title>
+  <link rel="icon" href="data:," /><!-- no favicon: suppress the auto /favicon.ico request -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">🎤</span>
+      <div class="brand-text">
+        <h1>LyricBridge <span class="sub">คาราโอเกะซิงก์คำ</span></h1>
+        <p class="tagline">ใส่เพลงแล้วร้องตามเนื้อที่ไฮไลต์ทีละคำ
+          <span class="en">Add a song and sing along — lyrics light up word by word</span></p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ── Step 0: one upload does everything (recommended) ──────── -->
+    <section class="oneup" aria-label="อัปโหลดเพลงเดียวจบ">
+      <div class="step hero" id="step0">
+        <div class="step-head">
+          <span class="num">★</span>
+          <div><h2>ใส่เพลงเต็มเพลงเดียว แล้วร้องได้เลย</h2>
+            <p class="en">Just drop one full song — we remove the vocals &amp; write the lyrics</p></div>
+        </div>
+        <label class="dropzone" id="songDrop">
+          <input id="songFile" type="file" accept="audio/*" hidden />
+          <span class="dz-icon" aria-hidden="true">🎤</span>
+          <span class="dz-text">เลือกหรือลากเพลงเต็มมาที่นี่
+            <small>Click or drag a full song — AI separates vocals and transcribes (a few minutes)</small></span>
+          <span class="dz-file" id="songName"></span>
+        </label>
+      </div>
+    </section>
+
+    <!-- ── Manual mode: bring your own stems (advanced) ──────────── -->
+    <details class="manual">
+      <summary>โหมดขั้นสูง: ใส่ instrumental + เนื้อเพลงเอง
+        <span class="en">Advanced: supply your own instrumental + lyrics</span></summary>
+    <section class="setup" aria-label="ตั้งค่าเริ่มต้น">
+      <!-- Step 1 — music -->
+      <div class="step" id="step1">
+        <div class="step-head">
+          <span class="num">1</span>
+          <div><h2>ใส่เพลงของคุณ</h2><p class="en">Add your song</p></div>
+        </div>
+        <label class="dropzone" id="audioDrop">
+          <input id="audioFile" type="file" accept="audio/*" hidden />
+          <span class="dz-icon" aria-hidden="true">🎵</span>
+          <span class="dz-text">เลือกหรือลากไฟล์เพลงมาที่นี่
+            <small>Click to choose, or drag an audio file here</small></span>
+          <span class="dz-file" id="audioName"></span>
+        </label>
+      </div>
+
+      <!-- Step 2 — lyrics -->
+      <div class="step" id="step2">
+        <div class="step-head">
+          <span class="num">2</span>
+          <div><h2>ใส่เนื้อเพลง</h2><p class="en">Add lyrics</p></div>
+        </div>
+        <label class="dropzone" id="jsonDrop">
+          <input id="jsonFile" type="file" accept="application/json,.json" hidden />
+          <span class="dz-icon" aria-hidden="true">📄</span>
+          <span class="dz-text">เลือกไฟล์เนื้อเพลง (.json)
+            <small>Choose a lyrics file you already have</small></span>
+          <span class="dz-file" id="jsonName"></span>
+        </label>
+
+        <details class="advanced">
+          <summary>ยังไม่มีไฟล์เนื้อเพลง? ให้ AI ถอดจากเสียงร้อง
+            <span class="en">No lyrics file? Let AI write them from vocals</span></summary>
+          <div class="adv-body">
+            <label class="field">
+              ที่อยู่เซิร์ฟเวอร์ <span class="en">Server address</span>
+              <input id="apiBase" type="text" value="http://localhost:8000" />
+            </label>
+            <label class="dropzone small" id="vocalDrop">
+              <input id="vocalFile" type="file" accept="audio/*" hidden />
+              <span class="dz-icon" aria-hidden="true">🎙️</span>
+              <span class="dz-text">เลือกไฟล์เสียงร้อง แล้วรอ AI ถอดเนื้อ
+                <small>Choose a vocals file — AI transcribes the lyrics</small></span>
+              <span class="dz-file" id="vocalName"></span>
+            </label>
+          </div>
+        </details>
+      </div>
+    </section>
+    </details>
+
+    <!-- Status / progress — always visible (e.g. AI transcribing feedback) -->
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <!-- ── Player ──────────────────────────────────────────────── -->
+    <section class="player" aria-label="เครื่องเล่น">
+      <audio id="audio" controls></audio>
+      <div class="offset">
+        <label for="syncOffset">ปรับจังหวะคำ <span class="en">Sync offset</span></label>
+        <input id="syncOffset" type="range" min="-2000" max="2000" step="50" value="0" />
+        <span id="syncOffsetVal" class="offset-val">0 ms</span>
+        <span class="offset-hint">เลื่อนซ้าย = คำมาช้าลง · ขวา = คำมาเร็วขึ้น
+          <span class="en">left = later, right = earlier</span></span>
+      </div>
+    </section>
+
+    <!-- ── Lyrics stage ────────────────────────────────────────── -->
+    <section class="stage">
+      <div id="lyrics" class="lyrics" aria-live="polite">
+        <div class="empty">
+          <span class="empty-icon" aria-hidden="true">🎶</span>
+          <p>ใส่เพลงและเนื้อเพลงด้านบนเพื่อเริ่มร้อง
+            <small>Add a song and lyrics above to start singing</small></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Edit tools (appear after lyrics load) ───────────────── -->
+    <section class="tools">
+      <details class="edit-tools">
+        <summary>✏️ แก้ไขเนื้อเพลง / จังหวะ
+          <span class="en">Fix lyrics &amp; timing</span></summary>
+        <div class="editbar">
+          <label class="switch">
+            <input id="editToggle" type="checkbox" /> เปิดโหมดแก้ไข <span class="en">Edit mode</span>
+          </label>
+          <p class="edithint">คลิกคำ = ตั้งเวลาให้ตรงจังหวะ · ดับเบิลคลิก = แก้คำที่ผิด · กด <kbd>Space</kbd> = ตอกเวลาคำที่กำลังร้อง
+            <small>Click a word to sync · double-click to fix text · press Space to stamp the current word to the playhead</small></p>
+          <div class="nudge">
+            <button id="nudgeBack" type="button">◀ −50ms</button>
+            <button id="nudgeFwd" type="button">+50ms ▶</button>
+            <span class="en">nudge the current word</span>
+          </div>
+          <div class="export">
+            <button id="exportLrc" type="button">⬇ บันทึก LRC</button>
+            <button id="exportJson" type="button">⬇ บันทึก JSON</button>
+          </div>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <script type="module" src="player.js"></script>
+</body>
+</html>

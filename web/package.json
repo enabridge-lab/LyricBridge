@@ -1,0 +1,10 @@
+{
+  "name": "lyricbridge-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "M2 static web player — real-time word-by-word karaoke highlight",
+  "scripts": {
+    "test": "node --test"
+  }
+}

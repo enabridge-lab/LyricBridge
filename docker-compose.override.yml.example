@@ -1,0 +1,36 @@
+# ──────────────────────────────────────────────────────────────────────────
+#  OPTIONAL local override.  Copy to `docker-compose.override.yml` (gitignored)
+#  to reuse models ALREADY on this machine instead of downloading from HF.
+#
+#      cp docker-compose.override.yml.example docker-compose.override.yml
+#
+#  `docker compose` auto-merges it. Use this when your disk is tight or you want
+#  to run fully OFFLINE. A normal clone does NOT need this file — the committed
+#  docker-compose.yml downloads everything from Hugging Face on first run.
+# ──────────────────────────────────────────────────────────────────────────
+services:
+  asr:
+    environment:
+      # Point at a locally-converted Thai CT2 Whisper (mounted below) instead of
+      # downloading. faster-whisper loads a plain directory path directly.
+      ASR_MODEL: /models/whisper-th-large-v3-ct2
+      # Stay offline so the align stage skips huggingface.co HEAD checks.
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    volumes:
+      - ./models/whisper-th-large-v3-ct2:/models/whisper-th-large-v3-ct2:ro
+
+# Repoint the named caches at this host's already-populated dirs (no download):
+volumes:
+  separator-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/models/audio-separator
+  hf-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HOME}/.cache/huggingface

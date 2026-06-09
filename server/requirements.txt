@@ -1,0 +1,22 @@
+# --- M0: Cloud ASR service (vocal wav -> LRC/ASS) ---
+# Pinned loosely; correctness-before-speed. CPU path must always work.
+
+fastapi
+uvicorn[standard]
+python-multipart           # multipart/form-data file upload
+
+faster-whisper             # CPU/GPU ASR with int8 quantization (cheap server)
+whisperx                   # word/char-level forced alignment (wav2vec2)
+pythainlp                  # Thai word tokenization (newmm) -- REQUIRED: Thai has no spaces
+
+pydantic
+soundfile                  # read wav duration / sanity checks
+numpy
+
+# --- M1: Server-side separation (full song -> vocals/instrumental) ---
+# Reuse nomadkaraoke's maintained separator (MIT) instead of a custom Demucs
+# wrapper. [cpu] keeps the self-host promise (onnxruntime CPU); the owner's
+# GTX 1650 installs the GPU extra instead:
+#   pip install "audio-separator[gpu]"
+# Needs ffmpeg on PATH (system pkg) to demux .mp4 audio and write wavs.
+audio-separator[cpu]        # HTDemucs ft + UVR-MDX-NET Karaoke 2 behind one API

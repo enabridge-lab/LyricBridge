@@ -1,0 +1,59 @@
+# ============================================================================
+#  LyricBridge — .gitignore
+#  Goal: a clone is light + legal. Big models are RE-FETCHED on first run
+#  (HF Hub / auto-download), never committed. See docs/REPRODUCIBLE_CLONE.md.
+# ============================================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# --- Models / large downloads (NEVER commit — too big for GitHub, re-fetched) ---
+# The whole models/ tree is local cache: Thai Whisper (from HF), separator
+# weights (auto-download), etc. A fresh clone downloads these on first run.
+models/
+*.pt
+*.onnx
+*.bin
+*.ckpt
+*.th
+
+# --- Copyrighted / user audio (NEVER commit — separating stems ≠ a license) ---
+# Real-song samples, separated vocal stems, and their derived lyric transcripts.
+server/tests/samples/
+server/tests/samples_vocals/
+server/tests/out/
+server/tests/out_vocals_fixed/
+*.wav
+*.mp3
+*.mp4
+*.m4a
+*.flac
+web/.fixtures_silent.wav
+
+# --- Logs / dev artifacts ---
+server/install.log
+server/smoke.log
+server/host_gpu.log
+*.log
+
+# --- Local-only machine config (paths/secrets specific to one box) ---
+# Keep the committed docker-compose.yml clean; ship an .example for reference.
+docker-compose.override.yml
+.claude/settings.local.json
+.env
+.env.*
+
+# --- Tooling / agent state ---
+.omc/
+**/.omc/
+
+# --- OS / editor ---
+.DS_Store
+*.swp
+.idea/
+.vscode/
