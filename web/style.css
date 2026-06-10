@@ -274,6 +274,56 @@ kbd {
 .lyrics.editing .word { cursor: pointer; border-bottom: 1px dashed transparent; }
 .lyrics.editing .word:hover { border-bottom-color: var(--accent); }
 .word.edited { color: var(--accent); }
+/* F8: video style controls (apply to the 🎬 render button). */
+.render-style {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--accent, #b78ae0);
+  border-radius: 10px;
+  font-size: .85rem;
+  align-items: center;
+}
+.render-style label { display: inline-flex; align-items: center; gap: 6px; }
+.render-style input[type="number"] { width: 4.5em; }
+
+/* F5: sync-quality badge — sets the timing expectation before singing. */
+.sync-badge {
+  margin: 6px auto 0;
+  padding: 4px 14px;
+  border-radius: 999px;
+  width: fit-content;
+  font-size: .9rem;
+  border: 1px solid transparent;
+}
+.sync-badge.good    { background: #e7f7ec; border-color: #74c69d; color: #1b6b3a; }
+.sync-badge.partial { background: #fff6e0; border-color: #f3c969; color: #8a5a00; }
+.sync-badge.rough   { background: #fdeaea; border-color: #ef9a9a; color: #9b1c1c; }
+
+/* F3: ASR isn't sure about this word — orange wavy underline ("uncertain",
+   not "wrong"; red would overclaim). Cleared once the user edits the word. */
+.word.low-conf {
+  text-decoration: underline wavy #ff9f43;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+/* F6: timing for this word is interpolated (guessed) — fade it. Distinct
+   visual axis from F3's underline; both can apply to one word. Cleared when
+   the user sets the time themselves. */
+.word.interp { opacity: .55; }
+/* F7: romanized reading under each word; toggled via body.show-roman so the
+   lyrics never need a re-render. */
+.word .roman { display: none; }
+body.show-roman .word { display: inline-block; text-align: center; }
+body.show-roman .word .roman {
+  display: block;
+  font-size: .5em;
+  line-height: 1.1;
+  opacity: .7;
+  font-weight: 400;
+}
 
 /* ── Progressive disclosure ──────────────────────────────────── */
 .player, .tools { display: none; }

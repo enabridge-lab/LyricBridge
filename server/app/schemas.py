@@ -16,6 +16,15 @@ class Word(BaseModel):
     text: str
     start: float = Field(..., description="Word start time in seconds")
     end: float = Field(..., description="Word end time in seconds")
+    # F3: ASR confidence 0..1, segment-level (every word in a segment shares the
+    # segment's score — whisper's tokens don't map 1:1 onto PyThaiNLP tokens).
+    # Optional so payloads/JSON files from before F3 still load everywhere.
+    confidence: float | None = None
+    # F6: True when this word's timing was GUESSED (interpolated) rather than
+    # taken from real char alignment. Default False keeps old payloads valid.
+    interpolated: bool = False
+    # F7: romanized reading (PyThaiNLP royin) for Thai learners. Optional.
+    roman: str | None = None
 
 
 class TranscribeResponse(BaseModel):

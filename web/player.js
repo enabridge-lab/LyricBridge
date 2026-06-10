@@ -63,6 +63,31 @@ export function withOffset(currentTime, offsetMs) {
   return currentTime + (Number(offsetMs) || 0) / 1000;
 }
 
+// F3: words with ASR confidence below this get the orange "not sure" underline.
+// Segment-level confidence (every word in an ASR segment shares one score), so
+// whole shaky phrases light up — which matches how melisma actually breaks ASR.
+export const LOW_CONF = 0.55;
+
+// True when a word should be flagged as low-confidence. Old payloads have no
+// confidence field -> never flagged (null/undefined is "unknown", not "bad").
+export function isLowConfidence(word, threshold = LOW_CONF) {
+  return word?.confidence != null && word.confidence < threshold;
+}
+
+// F5: grade a payload's word-sync quality for the badge. Returns
+// {level: "good"|"partial"|"rough", pct: number|null}, or null when the payload
+// carries no sync info at all (old JSON files -> show no badge, never error).
+// pct = % of ASR segments that got real forced alignment (vs interpolation).
+export function syncQuality(payload) {
+  if (!payload || payload.aligned == null) return null; // pre-sync-era payload
+  if (payload.aligned === false) return { level: "rough", pct: null };
+  const total = Number(payload.total_segment_count) || 0;
+  if (total <= 0) return { level: "good", pct: null }; // aligned, no counts (e.g. hand-edited)
+  const degraded = Number(payload.degraded_segment_count) || 0;
+  const pct = Math.round(100 * (1 - degraded / total));
+  return { level: pct >= 80 ? "good" : pct >= 40 ? "partial" : "rough", pct };
+}
+
 // Build the full {lines, words} view-model from a /transcribe payload.
 export function buildModel(payload) {
   const words = Array.isArray(payload?.words) ? payload.words : [];
@@ -112,6 +137,16 @@ export function serializePayload(lines, meta = {}) {
     aligned: true, // hand-corrected
     edited: true,
   };
+}
+
+// Serialize edited lines to the POST /render/{job_id} body shape: an array of
+// lines, each an array of {text,start,end}. Keeps the player's line breaks so
+// the server doesn't have to re-guess them. Pure — round-trips with
+// serializeWords (flattening this equals serializeWords(lines)).
+export function serializeLines(lines) {
+  return lines
+    .filter((ln) => ln.words.length)
+    .map((ln) => ln.words.map((w) => ({ text: w.text, start: w.start, end: w.end })));
 }
 
 // Set a word's start to `t` (tap-to-sync) and keep the line non-overlapping:
@@ -164,6 +199,107 @@ export async function karaokeViaServer(file, apiBase, fetchImpl = fetch, progres
   return res.json();
 }
 
+// F4: submit a karaoke job to the async queue -> {job_id, status_url} (202).
+// Returns null when the server predates the queue (404 -> caller falls back to
+// the blocking /karaoke). Other failures (413/429/5xx) throw with stage/error.
+export async function submitKaraokeJob(file, apiBase, fetchImpl = fetch, lang = "th") {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("lang", lang);
+  const res = await fetchImpl(`${apiBase.replace(/\/$/, "")}/jobs/karaoke`, {
+    method: "POST",
+    body: fd,
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(await _serverError(res));
+  }
+  return res.json();
+}
+
+// F4: poll GET /jobs/{id} until the job finishes. Resolves with the /karaoke-
+// shaped result payload; throws "{stage}: {error}" when the job failed.
+// `onUpdate` receives every status body (queue_position + stage) for the UI;
+// `sleep` is injectable so tests run without real timers.
+export async function pollKaraokeJob(jobId, apiBase, {
+  fetchImpl = fetch,
+  intervalMs = 1500,
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  onUpdate = null,
+} = {}) {
+  const base = apiBase.replace(/\/$/, "");
+  for (;;) {
+    const res = await fetchImpl(`${base}/jobs/${jobId}`);
+    if (!res.ok) {
+      throw new Error(await _serverError(res));
+    }
+    const st = await res.json();
+    if (onUpdate) onUpdate(st);
+    if (st.status === "done") return st.result;
+    if (st.status === "error") {
+      const e = st.error || {};
+      throw new Error(`${e.stage || "server"}: ${e.error || "job failed"}`);
+    }
+    await sleep(intervalMs);
+  }
+}
+
+// F4: remember/recall the in-flight job so a refreshed page resumes polling
+// instead of losing the run. `storage` injectable (tests pass a fake Map-like;
+// the browser passes localStorage).
+const JOB_REF_KEY = "lyricbridgeJob";
+export function saveJobRef(storage, jobId, base) {
+  try { storage.setItem(JOB_REF_KEY, JSON.stringify({ jobId, base })); } catch { /* private mode */ }
+}
+export function loadJobRef(storage) {
+  try {
+    const v = JSON.parse(storage.getItem(JOB_REF_KEY) || "null");
+    return v && v.jobId && v.base ? v : null;
+  } catch {
+    return null;
+  }
+}
+export function clearJobRef(storage) {
+  try { storage.removeItem(JOB_REF_KEY); } catch { /* ignore */ }
+}
+
+// POST edited lines to /render/{job_id} -> mp4 Blob (F2: re-render without
+// re-uploading the instrumental — it's still parked on the server's job store).
+// `fetchImpl` injectable for tests. Throws with the server's stage/error.
+// `style` (F8, optional): flat AssStyle fields, merged into the JSON body.
+export async function renderVideoViaServer(jobId, lines, apiBase, fetchImpl = fetch, style = null) {
+  const res = await fetchImpl(`${apiBase.replace(/\/$/, "")}/render/${jobId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lines, ...(style || {}) }),
+  });
+  if (!res.ok) {
+    throw new Error(await _serverError(res));
+  }
+  return res.blob();
+}
+
+// F8: normalize raw UI values into the flat style fields POST /render/{job_id}
+// accepts. Pure + forgiving: junk values are dropped (server defaults apply),
+// "#RRGGBB" colour-picker values lose the "#".
+export function buildRenderStyle({ font, fontSize, primary, highlight, alignment } = {}) {
+  const style = {};
+  const hex = (v) =>
+    typeof v === "string" && /^#?[0-9a-fA-F]{6}$/.test(v)
+      ? v.replace(/^#/, "").toUpperCase()
+      : null;
+  if (font && typeof font === "string") style.font = font;
+  const size = parseInt(fontSize, 10);
+  if (Number.isFinite(size)) style.font_size = size;
+  const p = hex(primary);
+  if (p) style.primary_colour = p;
+  const h = hex(highlight);
+  if (h) style.highlight_colour = h;
+  const al = parseInt(alignment, 10);
+  if (Number.isFinite(al)) style.alignment = al;
+  return style;
+}
+
 // Map a server stage name to a {th, en, step} label for the progress UI.
 export function stageLabel(stage) {
   const m = {
@@ -200,8 +336,15 @@ function init() {
     lyrics: $("lyrics"),
     status: $("status"),
     editToggle: $("editToggle"),
+    romanToggle: $("romanToggle"),
     exportLrc: $("exportLrc"),
     exportJson: $("exportJson"),
+    renderVideo: $("renderVideo"),
+    // F8: video style controls
+    renderStylePanel: $("renderStylePanel"),
+    styleFont: $("styleFont"), styleSize: $("styleSize"),
+    stylePrimary: $("stylePrimary"), styleHighlight: $("styleHighlight"),
+    stylePosition: $("stylePosition"),
     apiBase: $("apiBase"),
     vocalFile: $("vocalFile"),
     // friendly-UI extras (optional; guarded so headless/old markup still works)
@@ -215,6 +358,7 @@ function init() {
     syncOffset: $("syncOffset"), syncOffsetVal: $("syncOffsetVal"),
     nudgeBack: $("nudgeBack"), nudgeFwd: $("nudgeFwd"),
     // vocal guide
+    syncBadge: $("syncBadge"),
     vocalGuidePanel: $("vocalGuidePanel"),
     vocalGuideToggle: $("vocalGuideToggle"),
     vocalVolume: $("vocalVolume"),
@@ -224,6 +368,10 @@ function init() {
 
   let model = { words: [], lines: [] };
   let meta = {};
+  // F2: the /karaoke job whose instrumental is still parked on the server —
+  // lets the render button POST /render/{job_id} without re-uploading audio.
+  let renderJobId = null;
+  let renderApiBase = "";
   let wordSpans = [];
   let lastActive = -1;
   let editMode = false;
@@ -267,14 +415,41 @@ function init() {
     model = buildModel(payload);
     meta = { language: payload.language, duration_sec: payload.duration_sec };
     renderLyrics();
+    showSyncBadge(payload);
     markLoaded(els.step2, els.jsonDrop, els.jsonName, file);
     document.body.classList.add("has-lyrics");
+    // F3: point the user at the words the AI itself doubts.
+    const lowCount = model.words.filter((w) => isLowConfidence(w)).length;
+    const lowNote = lowCount
+      ? ` · มี ${lowCount} คำที่ AI ไม่มั่นใจ (ขีดเส้นใต้สีส้ม) — เปิดโหมดแก้ไขเพื่อตรวจ`
+      : "";
     setStatus(
       `พร้อมแล้ว! ${model.words.length} คำ · ${model.lines.length} บรรทัด` +
         (payload.aligned ? " · ตรงจังหวะรายคำ" : " · จับเวลาแบบประโยค") +
+        lowNote +
         `  ·  Ready — ${model.words.length} words`,
       "ok"
     );
+  }
+
+  // F5: badge that sets the "how accurate is the timing?" expectation before
+  // the user sings. Built via textContent (XSS-safe convention of this file).
+  function showSyncBadge(payload) {
+    if (!els.syncBadge) return;
+    const q = syncQuality(payload);
+    if (!q) {
+      els.syncBadge.hidden = true; // old payload without sync info -> no badge
+      return;
+    }
+    const pctTxt = q.pct != null ? ` ${q.pct}%` : "";
+    const text = {
+      good: `🟢 จังหวะแม่น${pctTxt} · Word-synced`,
+      partial: `🟡 จังหวะโดยประมาณ${pctTxt} · Partially synced — เปิดโหมดแก้ไขช่วยปรับได้`,
+      rough: `🔴 จังหวะประมาณเท่านั้น · Estimated timing — แนะนำใช้โหมดแก้ไข`,
+    }[q.level];
+    els.syncBadge.textContent = text;
+    els.syncBadge.className = "sync-badge " + q.level;
+    els.syncBadge.hidden = false;
   }
 
   function _wireVocalSync() {
@@ -325,8 +500,6 @@ function init() {
   async function runKaraoke(file) {
     if (!file) return;
     const base = (els.apiBase?.value || "http://localhost:8000").trim();
-    const progressId =
-      (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random();
     if (els.songName) els.songName.textContent = "⏳ " + file.name;
     if (els.songFile) els.songFile.disabled = true;
 
@@ -334,7 +507,6 @@ function init() {
     console.group(`[LyricBridge] runKaraoke — ${file.name}`);
     console.log("file:", file.name, `${fileMB} MB`, file.type || "(no MIME type)");
     console.log("API base:", base);
-    console.log("progress ID:", progressId);
     console.log("browser:", navigator.userAgent);
 
     // Pre-flight: confirm the server is reachable before starting the big upload.
@@ -354,7 +526,51 @@ function init() {
       return;
     }
 
-    // Poll the server's stage every 1.2s and reflect it in the big indicator.
+    try {
+      // F4: prefer the async queue — submit returns in seconds, then we poll
+      // GET /jobs/{id}. The job survives a page refresh (see the resume block
+      // at the bottom of init). A pre-F4 server 404s the submit -> fall back
+      // to the legacy blocking /karaoke.
+      console.time("[LyricBridge] karaoke job");
+      let payload;
+      const submitted = await submitKaraokeJob(file, base);
+      if (submitted) {
+        console.log("→ queued as job", submitted.job_id);
+        saveJobRef(localStorage, submitted.job_id, base);
+        showJobUpdate({ status: "queued" });
+        try {
+          payload = await pollKaraokeJob(submitted.job_id, base, { onUpdate: showJobUpdate });
+        } finally {
+          clearJobRef(localStorage);
+        }
+      } else {
+        console.log("→ no /jobs/karaoke on this server — using blocking /karaoke");
+        payload = await legacyKaraoke(file, base, fileMB);
+      }
+      console.timeEnd("[LyricBridge] karaoke job");
+      console.log("← karaoke OK:", payload);
+      await installKaraokeResult(payload, base, file);
+    } catch (err) {
+      const errType = err?.constructor?.name || "Error";
+      console.error(`[LyricBridge] karaoke failed (${errType}):`, err);
+      console.log("  err.message :", err.message);
+      console.log("  err.stack   :", err.stack);
+      console.log("Tip: Network tab → find POST /jobs/karaoke (or /karaoke) → check Status + Response");
+      if (els.songName) els.songName.textContent = "";
+      clearProcessing();
+      const detail = `[${errType}] ${err.message} — open Console (F12) for full trace`;
+      setStatus("ทำคาราโอเกะไม่สำเร็จ · Karaoke failed — " + detail, "error");
+    } finally {
+      if (els.songFile) els.songFile.disabled = false;
+      console.groupEnd();
+    }
+  }
+
+  // Legacy path for servers without the F4 queue: one blocking POST /karaoke
+  // with the old /progress side-poll for the stage indicator.
+  async function legacyKaraoke(file, base, fileMB) {
+    const progressId =
+      (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random();
     showStage("separating");
     const poll = setInterval(async () => {
       try {
@@ -364,56 +580,61 @@ function init() {
         if (p && p.stage && p.stage !== "unknown") showStage(p.stage);
       } catch { /* transient poll error -> keep last stage */ }
     }, 1200);
-
     try {
-      console.time("[LyricBridge] POST /karaoke");
       console.log("→ POST", base.replace(/\/$/, "") + "/karaoke", `(${fileMB} MB upload, starting…)`);
-      const payload = await karaokeViaServer(file, base, fetch, progressId);
-      console.timeEnd("[LyricBridge] POST /karaoke");
-      console.log("← /karaoke OK:", payload);
-      clearInterval(poll);
-      showStage("fetching");
-      // Set audio.src directly — avoids Chrome's ERR_FAILED on fetch().blob() for
-      // large (30-50 MB) WAV files. The browser's native audio engine streams it
-      // natively and can issue range requests when the user seeks.
-      const instrumentalSrc = base.replace(/\/$/, "") + payload.instrumental_url;
-      console.log("→ loading instrumental via audio.src:", instrumentalSrc);
-      await new Promise((resolve, reject) => {
-        els.audio.addEventListener("canplay", resolve, { once: true });
-        els.audio.addEventListener("error", () =>
-          reject(new Error("audio load failed (code " + (els.audio.error?.code ?? "?") + ")")),
-          { once: true }
-        );
-        els.audio.src = instrumentalSrc;
-        els.audio.load();
-      });
-      console.log("← instrumental ready");
-      document.body.classList.add("has-audio");
-      markLoaded(els.step0, els.songDrop, els.songName, file);
-      loadModel(payload); // renders lyrics + reveals tools
-      // Vocal guide: set src directly (same reason — avoids large fetch.blob())
-      if (payload.vocal_url) {
-        try {
-          loadVocalGuide(base.replace(/\/$/, "") + payload.vocal_url);
-        } catch {
-          // Vocal load failed — degrade silently (guide panel stays hidden)
-        }
-      }
-    } catch (err) {
-      clearInterval(poll);
-      const errType = err?.constructor?.name || "Error";
-      console.error(`[LyricBridge] /karaoke failed (${errType}):`, err);
-      console.log("  err.message :", err.message);
-      console.log("  err.stack   :", err.stack);
-      console.log("Tip: Network tab → find POST /karaoke → check Status + Response");
-      console.groupEnd();
-      if (els.songName) els.songName.textContent = "";
-      clearProcessing();
-      const detail = `[${errType}] ${err.message} — open Console (F12) for full trace`;
-      setStatus("ทำคาราโอเกะไม่สำเร็จ · Karaoke failed — " + detail, "error");
+      return await karaokeViaServer(file, base, fetch, progressId);
     } finally {
       clearInterval(poll);
-      if (els.songFile) els.songFile.disabled = false;
+    }
+  }
+
+  // Shared tail of the karaoke flow: instrumental + lyrics + vocal guide into
+  // the player. `file` is null when resuming a job after a page refresh.
+  async function installKaraokeResult(payload, base, file) {
+    showStage("fetching");
+    // Set audio.src directly — the browser's native audio engine streams the
+    // stem (now a ~3-4 MB m4a; WAV only if the server's encode fell back) and
+    // issues range requests when the user seeks.
+    const instrumentalSrc = base.replace(/\/$/, "") + payload.instrumental_url;
+    console.log("→ loading instrumental via audio.src:", instrumentalSrc);
+    await new Promise((resolve, reject) => {
+      els.audio.addEventListener("canplay", resolve, { once: true });
+      els.audio.addEventListener("error", () =>
+        reject(new Error("audio load failed (code " + (els.audio.error?.code ?? "?") + ")")),
+        { once: true }
+      );
+      els.audio.src = instrumentalSrc;
+      els.audio.load();
+    });
+    console.log("← instrumental ready");
+    document.body.classList.add("has-audio");
+    markLoaded(els.step0, els.songDrop, els.songName, file);
+    loadModel(payload); // renders lyrics + reveals tools
+    // Remember the job so the render-video button can reuse the parked
+    // instrumental (server renews its TTL on every access).
+    renderJobId = payload.job_id || null;
+    renderApiBase = base;
+    if (els.renderVideo) els.renderVideo.hidden = !renderJobId;
+    if (els.renderStylePanel) els.renderStylePanel.hidden = !renderJobId; // F8
+    // Vocal guide: set src directly (same native streaming path as above)
+    if (payload.vocal_url) {
+      try {
+        loadVocalGuide(base.replace(/\/$/, "") + payload.vocal_url);
+      } catch {
+        // Vocal load failed — degrade silently (guide panel stays hidden)
+      }
+    }
+  }
+
+  // F4: a job-status body -> the big stage indicator. Queued jobs show their
+  // position; running jobs reuse the normal 4-step stage display.
+  function showJobUpdate(st) {
+    if (st.status === "queued") {
+      const pos = st.queue_position > 1 ? ` (คิวที่ ${st.queue_position})` : "";
+      showProcessing("กำลังรอคิว…" + pos, "Waiting in queue", 0);
+      setStatus(`(0/4) กำลังรอคิว${pos} · Waiting in queue`, "busy");
+    } else if (st.stage) {
+      showStage(st.stage);
     }
   }
 
@@ -460,6 +681,17 @@ function init() {
     );
   });
 
+  // F7: show/hide romanized readings via a body class — no lyric re-render.
+  if (els.romanToggle) {
+    const showRoman = localStorage.getItem("showRoman") === "1";
+    els.romanToggle.checked = showRoman;
+    document.body.classList.toggle("show-roman", showRoman);
+    els.romanToggle.addEventListener("change", (e) => {
+      document.body.classList.toggle("show-roman", e.target.checked);
+      localStorage.setItem("showRoman", e.target.checked ? "1" : "0");
+    });
+  }
+
   els.exportLrc.addEventListener("click", () =>
     download("lyrics.edited.lrc", serializeLrc(model.lines), "text/plain")
   );
@@ -471,8 +703,9 @@ function init() {
     )
   );
 
-  function download(name, text, type) {
-    const url = URL.createObjectURL(new Blob([text], { type }));
+  function download(name, data, type) {
+    const blob = data instanceof Blob ? data : new Blob([data], { type });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = name;
@@ -480,11 +713,71 @@ function init() {
     URL.revokeObjectURL(url);
   }
 
+  // F8: read the style controls -> flat style fields for the render request.
+  function currentRenderStyle() {
+    return buildRenderStyle({
+      font: els.styleFont?.value,
+      fontSize: els.styleSize?.value,
+      primary: els.stylePrimary?.value,
+      highlight: els.styleHighlight?.value,
+      alignment: els.stylePosition?.value,
+    });
+  }
+
+  // F8: remember the user's style across sessions.
+  try {
+    const saved = JSON.parse(localStorage.getItem("renderStyle") || "null");
+    if (saved) {
+      if (els.styleFont && saved.font) els.styleFont.value = saved.font;
+      if (els.styleSize && saved.font_size) els.styleSize.value = String(saved.font_size);
+      if (els.stylePrimary && saved.primary_colour) els.stylePrimary.value = "#" + saved.primary_colour.toLowerCase();
+      if (els.styleHighlight && saved.highlight_colour) els.styleHighlight.value = "#" + saved.highlight_colour.toLowerCase();
+      if (els.stylePosition && saved.alignment) els.stylePosition.value = String(saved.alignment);
+    }
+  } catch { /* corrupt saved style -> defaults */ }
+
+  // F2: burn the (possibly edited) lyrics over the parked instrumental.
+  els.renderVideo?.addEventListener("click", async () => {
+    if (!renderJobId || !model.lines.length) return;
+    els.renderVideo.disabled = true;
+    setStatus("กำลังเผาวิดีโอ… อาจใช้เวลา 1-3 นาที · Rendering video, this can take 1-3 minutes", "busy");
+    try {
+      const style = currentRenderStyle(); // F8
+      localStorage.setItem("renderStyle", JSON.stringify(style));
+      const blob = await renderVideoViaServer(
+        renderJobId, serializeLines(model.lines), renderApiBase, fetch, style
+      );
+      download("karaoke.mp4", blob);
+      setStatus("ได้วิดีโอแล้ว! · Video downloaded — karaoke.mp4", "ok");
+    } catch (err) {
+      setStatus("สร้างวิดีโอไม่สำเร็จ · Render failed — " + err.message, "error");
+    } finally {
+      els.renderVideo.disabled = false;
+    }
+  });
+
+  // F3: an edited word is user-confirmed — drop the "AI not sure" flag.
+  function confirmWord(w, span) {
+    w.confidence = null;
+    if (span) {
+      span.classList.remove("low-conf");
+      span.removeAttribute("title");
+    }
+  }
+
+  // F6: the user set this word's time themselves — it's no longer a guess.
+  function confirmTiming(w, span) {
+    w.interpolated = false;
+    span?.classList.remove("interp");
+  }
+
   function editWord(w, span) {
     if (!editMode) return;
     // Tap-to-sync: pin this word's start to where the audio is now.
     syncWordStart(model.words, w._i, els.audio.currentTime);
     span.classList.add("edited");
+    confirmWord(w, span);
+    confirmTiming(w, span);
     setStatus(`synced "${w.text}" → ${w.start.toFixed(2)}s`);
   }
 
@@ -493,8 +786,10 @@ function init() {
     const next = window.prompt("แก้คำนี้ · Fix this word:", w.text);
     if (next != null && next !== w.text) {
       w.text = next;
-      span.textContent = next;
+      w.roman = null; // F7: the old romanization is stale for the new text
+      span.textContent = next; // also drops the <small class="roman"> child
       span.classList.add("edited");
+      confirmWord(w, span);
     }
   }
 
@@ -507,6 +802,8 @@ function init() {
     if (i < 0 || !model.words[i]) return;
     syncWordStart(model.words, i, els.audio.currentTime);
     wordSpans[i]?.classList.add("edited");
+    confirmWord(model.words[i], wordSpans[i]);
+    confirmTiming(model.words[i], wordSpans[i]);
     setStatus(`ตอกเวลา "${model.words[i].text}" → ${model.words[i].start.toFixed(2)}s · stamped`, "ok");
   }
 
@@ -516,6 +813,7 @@ function init() {
     if (i < 0 || !model.words[i]) return;
     syncWordStart(model.words, i, model.words[i].start + deltaMs / 1000);
     wordSpans[i]?.classList.add("edited");
+    confirmTiming(model.words[i], wordSpans[i]);
     setStatus(`เลื่อน "${model.words[i].text}" ${deltaMs > 0 ? "+" : ""}${deltaMs}ms → ${model.words[i].start.toFixed(2)}s`, "ok");
   }
 
@@ -662,6 +960,23 @@ function init() {
         const span = document.createElement("span");
         span.className = "word";
         span.textContent = w.text;
+        // F3: flag words the ASR itself wasn't sure about (orange wavy underline
+        // — "uncertain", not "wrong"). Tooltip shows the model's confidence.
+        if (isLowConfidence(w)) {
+          span.classList.add("low-conf");
+          span.title = `AI มั่นใจ ${Math.round(w.confidence * 100)}% · ASR confidence`;
+        }
+        // F6: faded = this word's TIMING is guessed (different axis from F3's
+        // orange underline = TEXT uncertain; both can apply to one word).
+        if (w.interpolated) span.classList.add("interp");
+        // F7: romanized reading; hidden/shown purely via the body class so the
+        // toggle never re-renders the lyrics.
+        if (w.roman) {
+          const r = document.createElement("small");
+          r.className = "roman";
+          r.textContent = w.roman;
+          span.appendChild(r);
+        }
         span.addEventListener("click", () => editWord(w, span));
         span.addEventListener("dblclick", () => retypeWord(w, span));
         wordSpans[w._i] = span;
@@ -696,6 +1011,26 @@ function init() {
   }
 
   requestAnimationFrame(highlight);
+
+  // F4: if a job was still running when the page was refreshed, resume polling
+  // it instead of losing the run (fixes the old "don't refresh!" pain).
+  (async () => {
+    const saved = loadJobRef(localStorage);
+    if (!saved) return;
+    try {
+      console.log("[LyricBridge] resuming job", saved.jobId);
+      setStatus("กำลังติดตามงานเดิมต่อ… · Resuming your previous job", "busy");
+      showJobUpdate({ status: "queued" });
+      const payload = await pollKaraokeJob(saved.jobId, saved.base, { onUpdate: showJobUpdate });
+      clearJobRef(localStorage);
+      await installKaraokeResult(payload, saved.base, null);
+    } catch (err) {
+      // Stale/expired/failed job — clear the ref so we don't retry forever.
+      clearJobRef(localStorage);
+      clearProcessing();
+      setStatus("งานเดิมหมดอายุหรือไม่สำเร็จ · Previous job expired or failed — " + err.message, "error");
+    }
+  })();
 }
 
 if (typeof document !== "undefined") {

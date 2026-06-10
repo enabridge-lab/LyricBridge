@@ -94,6 +94,7 @@
     </details>
 
     <!-- Status / progress — always visible (e.g. AI transcribing feedback) -->
+    <p id="syncBadge" class="sync-badge" hidden></p>
     <p id="status" class="status" role="status" aria-live="polite"></p>
 
     <!-- ── Player ──────────────────────────────────────────────── -->
@@ -140,6 +141,9 @@
           <label class="switch">
             <input id="editToggle" type="checkbox" /> เปิดโหมดแก้ไข <span class="en">Edit mode</span>
           </label>
+          <label class="switch">
+            <input id="romanToggle" type="checkbox" /> 🔤 คำอ่าน <span class="en">Romanization</span>
+          </label>
           <p class="edithint">คลิกคำ = ตั้งเวลาให้ตรงจังหวะ · ดับเบิลคลิก = แก้คำที่ผิด · กด <kbd>Space</kbd> = ตอกเวลาคำที่กำลังร้อง
             <small>Click a word to sync · double-click to fix text · press Space to stamp the current word to the playhead</small></p>
           <div class="nudge">
@@ -150,12 +154,33 @@
           <div class="export">
             <button id="exportLrc" type="button">⬇ บันทึก LRC</button>
             <button id="exportJson" type="button">⬇ บันทึก JSON</button>
+            <button id="renderVideo" type="button" hidden>🎬 สร้างวิดีโอ · Render video</button>
+          </div>
+          <!-- F8: video style options (apply to 🎬 render) -->
+          <div class="render-style" id="renderStylePanel" hidden>
+            <label>ฟอนต์ <span class="en">Font</span>
+              <select id="styleFont">
+                <option value="Sarabun">Sarabun</option>
+                <option value="Noto Sans Thai">Noto Sans Thai</option>
+              </select></label>
+            <label>ขนาด <span class="en">Size</span>
+              <input id="styleSize" type="number" min="8" max="200" value="48" /></label>
+            <label>สีตัวอักษร <span class="en">Text</span>
+              <input id="stylePrimary" type="color" value="#ffffff" /></label>
+            <label>สีคำที่ร้อง <span class="en">Highlight</span>
+              <input id="styleHighlight" type="color" value="#ffa500" /></label>
+            <label>ตำแหน่ง <span class="en">Position</span>
+              <select id="stylePosition">
+                <option value="2">ล่าง · Bottom</option>
+                <option value="5">กลางจอ · Middle</option>
+                <option value="8">บน · Top</option>
+              </select></label>
           </div>
         </div>
       </details>
     </section>
   </main>
 
-  <script type="module" src="player.js?v=4"></script>
+  <script type="module" src="player.js?v=7"></script>
 </body>
 </html>
