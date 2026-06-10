@@ -265,3 +265,40 @@ def test_karaoke_maps_pipeline_error_to_http(tmp_path, monkeypatch):
     assert resp.status_code == 422
     assert resp.json()["stage"] == "asr"
 
+
+def test_karaoke_response_has_vocal_url(tmp_path, monkeypatch):
+    """POST /karaoke should return vocal_url pointing to /vocal/<job_id>."""
+    calls = []
+    monkeypatch.setattr(main.separate, "separate", _fake_separation(tmp_path, calls))
+    monkeypatch.setattr(main, "_run_pipeline", lambda *a, **k: _fake_pipeline())
+    monkeypatch.setattr(main, "_wav_duration", lambda p: 12.3)
+
+    client = TestClient(main.app)
+    resp = client.post("/karaoke", files={"file": ("song.mp3", b"full song", "audio/mpeg")})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert "vocal_url" in payload
+    assert payload["vocal_url"].startswith("/vocal/")
+
+
+def test_get_vocal_returns_audio(tmp_path, monkeypatch):
+    """GET /vocal/<job_id> should return 200 audio/wav."""
+    calls = []
+    monkeypatch.setattr(main.separate, "separate", _fake_separation(tmp_path, calls))
+    monkeypatch.setattr(main, "_run_pipeline", lambda *a, **k: _fake_pipeline())
+    monkeypatch.setattr(main, "_wav_duration", lambda p: 12.3)
+
+    client = TestClient(main.app)
+    resp = client.post("/karaoke", files={"file": ("song.mp3", b"full song", "audio/mpeg")})
+    job_id = resp.json()["job_id"]
+    vocal_resp = client.get(f"/vocal/{job_id}")
+    assert vocal_resp.status_code == 200
+    assert "audio" in vocal_resp.headers["content-type"]
+
+
+def test_get_vocal_invalid_returns_404():
+    """GET /vocal/<invalid> should return 404."""
+    client = TestClient(main.app)
+    resp = client.get("/vocal/nonexistent_job_id")
+    assert resp.status_code == 404
+

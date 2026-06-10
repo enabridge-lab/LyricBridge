@@ -51,6 +51,42 @@ app.add_middleware(
 )
 
 
+class _LoggingMiddleware:
+    """Pure-ASGI request logger — avoids BaseHTTPMiddleware's known issue where
+    a FileResponse BackgroundTask can fire before the body is fully streamed,
+    causing Chrome to get ERR_FAILED 200 (OK) on large file downloads."""
+
+    def __init__(self, app):
+        self._app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+        method = scope.get("method", "?")
+        path = scope.get("path", "?")
+        headers = dict(scope.get("headers", []))
+        cl = headers.get(b"content-length", b"-").decode()
+        origin = headers.get(b"origin", b"-").decode()
+        ua = headers.get(b"user-agent", b"-").decode()[:60]
+        logger.info("→ %s %s  origin=%s  content-length=%s  ua=%s", method, path, origin, cl, ua)
+        t0 = time.perf_counter()
+        status_holder = [None]
+
+        async def _send(message):
+            if message["type"] == "http.response.start":
+                status_holder[0] = message.get("status")
+            await send(message)
+            if message["type"] == "http.response.body" and not message.get("more_body"):
+                elapsed = round(time.perf_counter() - t0, 3)
+                logger.info("← %s %s  status=%s  %.3fs", method, path, status_holder[0], elapsed)
+
+        await self._app(scope, receive, _send)
+
+
+app.add_middleware(_LoggingMiddleware)
+
+
 # Heavy endpoints are sync `def` so FastAPI runs them in a threadpool -> the
 # event loop stays free and /healthz keeps answering during a ~20 min separate
 # (else Docker's healthcheck marks the container unhealthy and restarts it
@@ -117,6 +153,11 @@ _JOBS_DIR = Path(tempfile.mkdtemp(prefix="karaoke_jobs_"))
 _jobs_lock = threading.Lock()
 _jobs: dict[str, tuple[Path, float]] = {}  # job_id -> (instrumental path, expiry)
 
+# Vocal stems: TTL-only cleanup (no pop-on-take, เพื่อให้ re-fetch ได้)
+_VOCAL_DIR = Path(tempfile.mkdtemp(prefix="karaoke_vocals_"))
+_vocal_jobs_lock = threading.Lock()
+_vocal_jobs: dict[str, tuple[Path, float]] = {}  # job_id -> (vocals_path, expiry)
+
 
 def _store_instrumental(src: Path) -> str:
     """Move an instrumental into the job store, return its opaque job_id."""
@@ -130,18 +171,45 @@ def _store_instrumental(src: Path) -> str:
     return job_id
 
 
-def _take_instrumental(job_id: str) -> Path | None:
-    """Atomically CLAIM a job's instrumental: pop the entry under the lock and
-    return its path, or None if missing/expired. Popping on take guarantees a
-    single download even if two GETs race -- the loser sees no entry -> 404.
-    The file itself is removed after streaming (see get_instrumental)."""
+def _get_instrumental(job_id: str) -> Path | None:
+    """Return the instrumental path if it exists and hasn't expired, else None.
+    Does NOT pop the entry so the browser can make multiple range requests
+    (Chrome uses range GETs when the audio element seeks). TTL sweep handles
+    cleanup after INSTRUMENTAL_TTL_SEC."""
     with _jobs_lock:
-        entry = _jobs.pop(job_id, None)
+        entry = _jobs.get(job_id)
+    if entry is None:
+        return None
+    path, expiry = entry
+    if time.time() > expiry or not path.exists():
+        with _jobs_lock:
+            _jobs.pop(job_id, None)
+        shutil.rmtree(path.parent, ignore_errors=True)
+        return None
+    return path
+
+
+def _store_vocal(job_id: str, src: Path) -> None:
+    """Move a vocal stem into the vocal store under the given job_id."""
+    dest_dir = _VOCAL_DIR / job_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / "vocals.wav"
+    shutil.move(str(src), str(dest))
+    with _vocal_jobs_lock:
+        _vocal_jobs[job_id] = (dest, time.time() + INSTRUMENTAL_TTL_SEC)
+
+
+def _get_vocal(job_id: str) -> Path | None:
+    """Return the vocal path for job_id if it exists and hasn't expired, else None."""
+    with _vocal_jobs_lock:
+        entry = _vocal_jobs.get(job_id)
     if entry is None:
         return None
     path, expiry = entry
     if time.time() > expiry or not path.exists():
         shutil.rmtree(path.parent, ignore_errors=True)
+        with _vocal_jobs_lock:
+            _vocal_jobs.pop(job_id, None)
         return None
     return path
 
@@ -190,6 +258,17 @@ def _sweep_jobs() -> None:
                 expired.append((jid, path))
                 _jobs.pop(jid, None)
     for _, path in expired:
+        shutil.rmtree(path.parent, ignore_errors=True)
+    # Sweep expired vocal stems
+    with _vocal_jobs_lock:
+        expired_vocals = [
+            (jid, path)
+            for jid, (path, expiry) in list(_vocal_jobs.items())
+            if now > expiry
+        ]
+        for jid, _ in expired_vocals:
+            _vocal_jobs.pop(jid, None)
+    for _, path in expired_vocals:
         shutil.rmtree(path.parent, ignore_errors=True)
     # drop stale progress entries too
     with _progress_lock:
@@ -492,11 +571,20 @@ def karaoke(
         # Park the instrumental for the follow-up GET (moved OUT of tmpdir so the
         # finally cleanup below doesn't take it).
         job_id = _store_instrumental(result.instrumental_path)
+
+        # Store vocal stem for the guide feature.
+        try:
+            _store_vocal(job_id, result.vocals_path)
+        except Exception:
+            logger.warning("could not store vocal stem for job %s", job_id)
+
         _set_progress(pid, "done")
 
         payload = resp.model_dump()
         payload["job_id"] = job_id
         payload["instrumental_url"] = f"/instrumental/{job_id}"
+        if _get_vocal(job_id) is not None:
+            payload["vocal_url"] = f"/vocal/{job_id}"
         return JSONResponse(content=payload)
     finally:
         # Remove the upload + vocal stem + work files (instrumental already moved).
@@ -512,16 +600,34 @@ def get_progress(progress_id: str):
 
 @app.get("/instrumental/{job_id}")
 def get_instrumental(job_id: str):
-    """Stream a /karaoke job's instrumental once, then delete it (TTL-bounded)."""
-    path = _take_instrumental(job_id)
+    """Serve a /karaoke job's instrumental (TTL-bounded, re-fetchable).
+    Reads the whole file into memory before responding so uvicorn's keep-alive
+    timer never fires mid-transfer — eliminates Chrome ERR_FAILED 200 (OK)."""
+    from fastapi.responses import Response as PlainResponse
+    path = _get_instrumental(job_id)
     if path is None:
         return _err(404, "instrumental not found or expired", "instrumental")
-    # The entry is already claimed (popped); delete the file after it streams.
-    return FileResponse(
-        path,
+    data = path.read_bytes()
+    return PlainResponse(
+        content=data,
         media_type="audio/wav",
-        filename="instrumental.wav",
-        background=BackgroundTask(shutil.rmtree, path.parent, ignore_errors=True),
+        headers={"Content-Disposition": 'inline; filename="instrumental.wav"'},
+    )
+
+
+@app.get("/vocal/{job_id}")
+def get_vocal(job_id: str):
+    """Serve a /karaoke job's vocal stem (TTL-bounded, re-fetchable).
+    Same in-memory pattern as get_instrumental to avoid Chrome ERR_FAILED."""
+    from fastapi.responses import Response as PlainResponse
+    path = _get_vocal(job_id)
+    if path is None:
+        return _err(404, "vocal not found or expired", "vocal")
+    data = path.read_bytes()
+    return PlainResponse(
+        content=data,
+        media_type="audio/wav",
+        headers={"Content-Disposition": 'inline; filename="vocals.wav"'},
     )
 
 
