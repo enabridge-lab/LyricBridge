@@ -293,14 +293,16 @@ function init() {
     });
   }
 
-  function loadVocalGuide(blob) {
+  function loadVocalGuide(blobOrUrl) {
     if (vocalAudio) {
       vocalAudio.pause();
-      URL.revokeObjectURL(vocalAudio.src);
+      if (vocalAudio.src?.startsWith("blob:")) URL.revokeObjectURL(vocalAudio.src);
       vocalAudio = null;
     }
     vocalAudio = new Audio();
-    vocalAudio.src = URL.createObjectURL(blob);
+    vocalAudio.src = typeof blobOrUrl === "string"
+      ? blobOrUrl
+      : URL.createObjectURL(blobOrUrl);
     vocalAudio.volume = vocalGuideVol;
     _wireVocalSync();
     if (els.vocalGuidePanel) {
@@ -328,6 +330,30 @@ function init() {
     if (els.songName) els.songName.textContent = "⏳ " + file.name;
     if (els.songFile) els.songFile.disabled = true;
 
+    const fileMB = (file.size / 1024 / 1024).toFixed(2);
+    console.group(`[LyricBridge] runKaraoke — ${file.name}`);
+    console.log("file:", file.name, `${fileMB} MB`, file.type || "(no MIME type)");
+    console.log("API base:", base);
+    console.log("progress ID:", progressId);
+    console.log("browser:", navigator.userAgent);
+
+    // Pre-flight: confirm the server is reachable before starting the big upload.
+    try {
+      const ping = await fetch(base.replace(/\/$/, "") + "/healthz");
+      console.log("✅ /healthz reachable — status", ping.status);
+    } catch (pingErr) {
+      console.error("❌ /healthz UNREACHABLE:", pingErr);
+      setStatus(
+        `เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ · Cannot reach server at ${base} — ${pingErr.message}` +
+        " | ตรวจสอบว่า server กำลังทำงานอยู่ (check Console F12)",
+        "error"
+      );
+      if (els.songName) els.songName.textContent = "";
+      if (els.songFile) els.songFile.disabled = false;
+      console.groupEnd();
+      return;
+    }
+
     // Poll the server's stage every 1.2s and reflect it in the big indicator.
     showStage("separating");
     const poll = setInterval(async () => {
@@ -340,32 +366,51 @@ function init() {
     }, 1200);
 
     try {
+      console.time("[LyricBridge] POST /karaoke");
+      console.log("→ POST", base.replace(/\/$/, "") + "/karaoke", `(${fileMB} MB upload, starting…)`);
       const payload = await karaokeViaServer(file, base, fetch, progressId);
+      console.timeEnd("[LyricBridge] POST /karaoke");
+      console.log("← /karaoke OK:", payload);
       clearInterval(poll);
       showStage("fetching");
-      const res = await fetch(base.replace(/\/$/, "") + payload.instrumental_url);
-      if (!res.ok) throw new Error("instrumental fetch failed (HTTP " + res.status + ")");
-      const blob = await res.blob();
-      loadAudio(new File([blob], "instrumental.wav", { type: blob.type || "audio/wav" }));
+      // Set audio.src directly — avoids Chrome's ERR_FAILED on fetch().blob() for
+      // large (30-50 MB) WAV files. The browser's native audio engine streams it
+      // natively and can issue range requests when the user seeks.
+      const instrumentalSrc = base.replace(/\/$/, "") + payload.instrumental_url;
+      console.log("→ loading instrumental via audio.src:", instrumentalSrc);
+      await new Promise((resolve, reject) => {
+        els.audio.addEventListener("canplay", resolve, { once: true });
+        els.audio.addEventListener("error", () =>
+          reject(new Error("audio load failed (code " + (els.audio.error?.code ?? "?") + ")")),
+          { once: true }
+        );
+        els.audio.src = instrumentalSrc;
+        els.audio.load();
+      });
+      console.log("← instrumental ready");
+      document.body.classList.add("has-audio");
       markLoaded(els.step0, els.songDrop, els.songName, file);
       loadModel(payload); // renders lyrics + reveals tools
-      // Vocal guide: fetch the vocal stem if the server provided one
+      // Vocal guide: set src directly (same reason — avoids large fetch.blob())
       if (payload.vocal_url) {
         try {
-          const vocalRes = await fetch(base.replace(/\/$/, "") + payload.vocal_url);
-          if (vocalRes.ok) {
-            const vocalBlob = await vocalRes.blob();
-            loadVocalGuide(new File([vocalBlob], "vocals.wav", { type: vocalBlob.type || "audio/wav" }));
-          }
+          loadVocalGuide(base.replace(/\/$/, "") + payload.vocal_url);
         } catch {
-          // Vocal fetch failed — degrade silently (guide panel stays hidden)
+          // Vocal load failed — degrade silently (guide panel stays hidden)
         }
       }
     } catch (err) {
       clearInterval(poll);
+      const errType = err?.constructor?.name || "Error";
+      console.error(`[LyricBridge] /karaoke failed (${errType}):`, err);
+      console.log("  err.message :", err.message);
+      console.log("  err.stack   :", err.stack);
+      console.log("Tip: Network tab → find POST /karaoke → check Status + Response");
+      console.groupEnd();
       if (els.songName) els.songName.textContent = "";
       clearProcessing();
-      setStatus("ทำคาราโอเกะไม่สำเร็จ · Karaoke failed — " + err.message, "error");
+      const detail = `[${errType}] ${err.message} — open Console (F12) for full trace`;
+      setStatus("ทำคาราโอเกะไม่สำเร็จ · Karaoke failed — " + detail, "error");
     } finally {
       clearInterval(poll);
       if (els.songFile) els.songFile.disabled = false;
