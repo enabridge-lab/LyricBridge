@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import queue
 import shutil
 import subprocess
 import tempfile
@@ -20,7 +21,7 @@ import uuid
 import zipfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import Body, FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
@@ -101,6 +102,17 @@ MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "200"))
 # Include per-stage wall times in /karaoke + /transcribe responses (perf tuning).
 EXPOSE_TIMINGS = os.getenv("EXPOSE_TIMINGS", "1").lower() in ("1", "true", "yes")
 
+# F7: attach a romanized reading to every word (Thai learners). Rule-based,
+# ~ms per song; ROMANIZE=0 turns it off if a benchmark ever says otherwise.
+ROMANIZE = os.getenv("ROMANIZE", "1").lower() in ("1", "true", "yes")
+
+
+# F8: fonts a render request may pick. The name is interpolated into an ffmpeg
+# filter string, so it's an allowlist (not free text) to rule out injection.
+def _allowed_render_fonts() -> set[str]:
+    extra = {f.strip() for f in os.getenv("RENDER_FONTS_EXTRA", "").split(",") if f.strip()}
+    return {"Sarabun", "Noto Sans Thai"} | extra
+
 
 def _err(status: int, message: str, stage: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": message, "stage": stage})
@@ -149,6 +161,13 @@ class PipelineError(Exception):
 # auto-deleted after it streams once AND swept on a TTL. The vocal stem and the
 # original upload are never kept.
 INSTRUMENTAL_TTL_SEC = int(os.getenv("INSTRUMENTAL_TTL_SEC", "600"))  # 10 min
+
+# F1: compress stems to M4A/AAC before they enter the store (WAV ~35-50 MB ->
+# ~3-4 MB). STEM_ENCODE=0 keeps the old raw-WAV behaviour (e.g. no usable ffmpeg).
+STEM_ENCODE = os.getenv("STEM_ENCODE", "1").lower() in ("1", "true", "yes")
+
+# Content-Type by stored stem extension (FileResponse needs the real type).
+_STEM_MEDIA_TYPES = {".m4a": "audio/mp4", ".wav": "audio/wav"}
 _JOBS_DIR = Path(tempfile.mkdtemp(prefix="karaoke_jobs_"))
 _jobs_lock = threading.Lock()
 _jobs: dict[str, tuple[Path, float]] = {}  # job_id -> (instrumental path, expiry)
@@ -159,13 +178,35 @@ _vocal_jobs_lock = threading.Lock()
 _vocal_jobs: dict[str, tuple[Path, float]] = {}  # job_id -> (vocals_path, expiry)
 
 
-def _store_instrumental(src: Path) -> str:
-    """Move an instrumental into the job store, return its opaque job_id."""
-    job_id = uuid.uuid4().hex
+def _encode_stem_or_wav(src: Path) -> Path:
+    """Encode a stem WAV to .m4a next to it; return the encoded path.
+
+    Degrades gracefully: STEM_ENCODE=0 or any ffmpeg failure returns the
+    original WAV untouched (logged as WARNING) so the flow never breaks.
+    Runs OUTSIDE _inference_lock on purpose — AAC encode is light CPU work
+    and never touches the GPU.
+    """
+    if not STEM_ENCODE:
+        return src
+    dest = src.with_suffix(".m4a")
+    try:
+        return render.encode_stem(src, dest)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("stem encode failed, serving raw WAV: %s", e)
+        return src
+
+
+def _store_instrumental(src: Path, job_id: str | None = None) -> str:
+    """Encode + move an instrumental into the job store, return its job_id.
+
+    F4: an async job passes its own pre-generated job_id so progress, stems and
+    the job record all share ONE id (mirrors _store_vocal's signature)."""
+    job_id = job_id or uuid.uuid4().hex
     dest_dir = _JOBS_DIR / job_id
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / "instrumental.wav"
-    shutil.move(str(src), str(dest))
+    stem = _encode_stem_or_wav(src)
+    dest = dest_dir / f"instrumental{stem.suffix}"
+    shutil.move(str(stem), str(dest))
     with _jobs_lock:
         _jobs[job_id] = (dest, time.time() + INSTRUMENTAL_TTL_SEC)
     return job_id
@@ -190,11 +231,12 @@ def _get_instrumental(job_id: str) -> Path | None:
 
 
 def _store_vocal(job_id: str, src: Path) -> None:
-    """Move a vocal stem into the vocal store under the given job_id."""
+    """Encode + move a vocal stem into the vocal store under the given job_id."""
     dest_dir = _VOCAL_DIR / job_id
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / "vocals.wav"
-    shutil.move(str(src), str(dest))
+    stem = _encode_stem_or_wav(src)
+    dest = dest_dir / f"vocals{stem.suffix}"
+    shutil.move(str(stem), str(dest))
     with _vocal_jobs_lock:
         _vocal_jobs[job_id] = (dest, time.time() + INSTRUMENTAL_TTL_SEC)
 
@@ -212,6 +254,54 @@ def _get_vocal(job_id: str) -> Path | None:
             _vocal_jobs.pop(job_id, None)
         return None
     return path
+
+
+# --- F4: async job queue (submit -> poll, no 20-min blocking request) -------
+# No new dependencies (self-host promise): threading + queue + in-memory dict,
+# same pattern as _jobs/_progress. ONE worker thread pulls jobs in FIFO order,
+# so "one heavy job at a time" holds by construction (and _inference_lock still
+# guards against the legacy blocking endpoints running concurrently).
+JOB_RESULT_TTL_SEC = int(os.getenv("JOB_RESULT_TTL_SEC", "1800"))  # 30 min
+MAX_QUEUED_JOBS = int(os.getenv("MAX_QUEUED_JOBS", "3"))
+
+_async_jobs_lock = threading.Lock()
+# job_id -> {status: queued|running|done|error, created, expiry|None,
+#            result: dict|None, error: {error, stage}|None}
+_async_jobs: dict[str, dict] = {}
+_job_queue: "queue.Queue[tuple[str, Path, str, str]]" = queue.Queue()
+
+
+def _job_worker_loop() -> None:
+    """Single FIFO worker: runs each queued /jobs/karaoke job to completion."""
+    while True:
+        job_id, input_path, tmpdir, lang = _job_queue.get()
+        with _async_jobs_lock:
+            rec = _async_jobs.get(job_id)
+            if rec is None:  # swept while waiting (shouldn't happen pre-TTL)
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                continue
+            rec["status"] = "running"
+        try:
+            payload = _run_karaoke_job(input_path, tmpdir, lang, pid=job_id, job_id=job_id)
+            with _async_jobs_lock:
+                rec["status"] = "done"
+                rec["result"] = payload
+        except PipelineError as e:
+            with _async_jobs_lock:
+                rec["status"] = "error"
+                rec["error"] = {"error": e.message, "stage": e.stage}
+        except Exception as e:  # noqa: BLE001 - a worker crash must not kill the queue
+            logger.exception("async karaoke job %s failed", job_id)
+            with _async_jobs_lock:
+                rec["status"] = "error"
+                rec["error"] = {"error": str(e), "stage": "separate"}
+        finally:
+            with _async_jobs_lock:
+                rec["expiry"] = time.time() + JOB_RESULT_TTL_SEC
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+threading.Thread(target=_job_worker_loop, daemon=True).start()
 
 
 # --- /karaoke progress (per-job stage, polled by the browser) ---------------
@@ -274,6 +364,13 @@ def _sweep_jobs() -> None:
     with _progress_lock:
         for pid in [p for p, v in _progress.items() if now - v.get("ts", 0) > _PROGRESS_TTL_SEC]:
             _progress.pop(pid, None)
+    # F4: drop finished async-job records past their result TTL
+    with _async_jobs_lock:
+        for jid in [
+            j for j, r in _async_jobs.items()
+            if r.get("expiry") is not None and now > r["expiry"]
+        ]:
+            _async_jobs.pop(jid, None)
 
 
 def _sweeper_loop() -> None:
@@ -426,6 +523,18 @@ def _run_pipeline(
                 continue
             seg_chars = char_map.get(i) if char_map else None
             seg_words = thai.map_words(tokens, seg.start, seg.end, seg_chars)
+            # F3: stamp the segment's ASR confidence onto each of its words.
+            # Segment-level on purpose — whisper's tokens and PyThaiNLP's tokens
+            # are different word sets, and melisma breaks whole phrases anyway.
+            conf = asr.segment_confidence(
+                getattr(seg, "avg_logprob", None), getattr(seg, "no_speech_prob", None)
+            )
+            for w in seg_words:
+                if conf is not None:
+                    w.confidence = round(conf, 3)
+                # F7: romanized reading per word (same single pass as F3).
+                if ROMANIZE:
+                    w.roman = thai.romanize_word(w.text) or None
             words.extend(seg_words)
             line_groups.append(seg_words)
     except Exception as e:  # noqa: BLE001
@@ -526,69 +635,148 @@ def karaoke(
         except ValueError as e:
             return _err(413, str(e), "separate")
 
-        # "queued" until we hold the lock (another job may be running first).
-        _set_progress(pid, "queued")
-
-        # One inference slot for the whole job: separate THEN transcribe, so the
-        # vocal stem never co-resides with Demucs and we never separate twice.
-        # NOTE (public deploy): this holds _inference_lock for the FULL job --
-        # separation alone is ~20 min/song on CPU -- so every other heavy request
-        # queues behind it. That's intentional (PRD 5.1 serialisation) but means
-        # one /karaoke can block the queue for a long time. Scale out / use a GPU
-        # / front it with a job queue if you expose this publicly. /healthz stays
-        # responsive throughout (endpoints are sync `def` in the threadpool).
-        with _inference_lock:
-            _set_progress(pid, "separating")
-            _t_sep = time.perf_counter()
-            try:
-                result = separate.separate(input_path, tmpdir)
-            except Exception as e:  # noqa: BLE001
-                logger.exception("separation failed")
-                return _err(500, str(e), "separate")
-            separate_sec = round(time.perf_counter() - _t_sep, 2)
-            logger.info(
-                "separate done: %.1fs model=%s device=%s",
-                separate_sec, separate.SEPARATION_MODEL, result.device,
-            )
-
-            try:
-                duration = _wav_duration(str(result.vocals_path))
-            except Exception:  # noqa: BLE001
-                duration = 0.0
-
-            try:
-                resp = _run_pipeline(
-                    str(result.vocals_path), lang, duration,
-                    on_stage=lambda name: _set_progress(pid, name),
-                )
-            except PipelineError as e:
-                return _err(e.status, e.message, e.stage)
-
-        # Fold the separate time into the response's per-stage timings.
-        if EXPOSE_TIMINGS and resp.timings_sec is not None:
-            resp.timings_sec = {"separate": separate_sec, **resp.timings_sec}
-
-        # Park the instrumental for the follow-up GET (moved OUT of tmpdir so the
-        # finally cleanup below doesn't take it).
-        job_id = _store_instrumental(result.instrumental_path)
-
-        # Store vocal stem for the guide feature.
         try:
-            _store_vocal(job_id, result.vocals_path)
-        except Exception:
-            logger.warning("could not store vocal stem for job %s", job_id)
-
-        _set_progress(pid, "done")
-
-        payload = resp.model_dump()
-        payload["job_id"] = job_id
-        payload["instrumental_url"] = f"/instrumental/{job_id}"
-        if _get_vocal(job_id) is not None:
-            payload["vocal_url"] = f"/vocal/{job_id}"
+            payload = _run_karaoke_job(input_path, tmpdir, lang, pid)
+        except PipelineError as e:
+            return _err(e.status, e.message, e.stage)
         return JSONResponse(content=payload)
     finally:
         # Remove the upload + vocal stem + work files (instrumental already moved).
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _run_karaoke_job(
+    input_path: Path, tmpdir: str | Path, lang: str, pid: str | None,
+    job_id: str | None = None,
+) -> dict:
+    """Separate -> transcribe -> park stems; the whole /karaoke job body.
+
+    Shared by the blocking POST /karaoke and the F4 async worker (no
+    copy-paste). Raises PipelineError on any failure; the caller maps it to an
+    HTTP response or a job-record error. Caller owns tmpdir cleanup.
+    `job_id` (optional) forces the stem-store id (async jobs use ONE id for
+    progress + stems + job record).
+    """
+    # "queued" until we hold the lock (another job may be running first).
+    _set_progress(pid, "queued")
+
+    # One inference slot for the whole job: separate THEN transcribe, so the
+    # vocal stem never co-resides with Demucs and we never separate twice.
+    # NOTE (public deploy): this holds _inference_lock for the FULL job --
+    # separation alone is ~20 min/song on CPU -- so every other heavy request
+    # queues behind it. That's intentional (PRD 5.1 serialisation). For new
+    # clients, POST /jobs/karaoke queues the wait instead of blocking the
+    # request. /healthz stays responsive throughout (sync `def` threadpool).
+    with _inference_lock:
+        _set_progress(pid, "separating")
+        _t_sep = time.perf_counter()
+        try:
+            result = separate.separate(input_path, tmpdir)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("separation failed")
+            raise PipelineError(500, str(e), "separate")
+        separate_sec = round(time.perf_counter() - _t_sep, 2)
+        logger.info(
+            "separate done: %.1fs model=%s device=%s",
+            separate_sec, separate.SEPARATION_MODEL, result.device,
+        )
+
+        try:
+            duration = _wav_duration(str(result.vocals_path))
+        except Exception:  # noqa: BLE001
+            duration = 0.0
+
+        resp = _run_pipeline(
+            str(result.vocals_path), lang, duration,
+            on_stage=lambda name: _set_progress(pid, name),
+        )
+
+    # Fold the separate time into the response's per-stage timings.
+    if EXPOSE_TIMINGS and resp.timings_sec is not None:
+        resp.timings_sec = {"separate": separate_sec, **resp.timings_sec}
+
+    # Park the instrumental for the follow-up GET (moved OUT of tmpdir so the
+    # caller's cleanup doesn't take it).
+    job_id = _store_instrumental(result.instrumental_path, job_id)
+
+    # Store vocal stem for the guide feature.
+    try:
+        _store_vocal(job_id, result.vocals_path)
+    except Exception:
+        logger.warning("could not store vocal stem for job %s", job_id)
+
+    _set_progress(pid, "done")
+
+    payload = resp.model_dump()
+    payload["job_id"] = job_id
+    payload["instrumental_url"] = f"/instrumental/{job_id}"
+    if _get_vocal(job_id) is not None:
+        payload["vocal_url"] = f"/vocal/{job_id}"
+    return payload
+
+
+# sync `def` is fine: this only saves the upload then returns 202 — the heavy
+# work happens on the worker thread.
+@app.post("/jobs/karaoke")
+def submit_karaoke_job(file: UploadFile = File(...), lang: str = Form("th")):
+    """F4: submit a karaoke job; returns 202 immediately (poll GET /jobs/{id}).
+
+    Same multipart contract as POST /karaoke, but the request doesn't block for
+    the ~minutes-long pipeline. One job_id covers the job record, progress and
+    the parked stems. The legacy blocking /karaoke stays for old clients.
+    """
+    with _async_jobs_lock:
+        queued = sum(1 for r in _async_jobs.values() if r["status"] == "queued")
+    if queued >= MAX_QUEUED_JOBS:
+        return _err(429, f"queue full ({MAX_QUEUED_JOBS} jobs waiting); try again later", "queue")
+
+    job_id = uuid.uuid4().hex
+    tmpdir = tempfile.mkdtemp(prefix="karaoke_job_")
+    input_path = Path(tmpdir) / (Path(file.filename or "song").name or "song")
+    try:
+        _save_upload(file, input_path)
+    except ValueError as e:
+        return _cleanup_err(tmpdir, 413, str(e), "separate")
+
+    with _async_jobs_lock:
+        _async_jobs[job_id] = {
+            "status": "queued", "created": time.time(), "expiry": None,
+            "result": None, "error": None,
+        }
+    _set_progress(job_id, "queued")
+    _job_queue.put((job_id, input_path, tmpdir, lang))
+    return JSONResponse(
+        status_code=202,
+        content={"job_id": job_id, "status_url": f"/jobs/{job_id}"},
+    )
+
+
+@app.get("/jobs/{job_id}")
+def get_job(job_id: str):
+    """F4: status of an async karaoke job (browser polls this until done).
+
+    Folds in the stage info /progress tracks, so one poll endpoint covers both
+    queue state and pipeline stage. `result` is the exact /karaoke payload."""
+    with _async_jobs_lock:
+        rec = _async_jobs.get(job_id)
+        if rec is None:
+            return _err(404, "job not found or expired", "queue")
+        body = {
+            "status": rec["status"],
+            "result": rec["result"],
+            "error": rec["error"],
+        }
+        if rec["status"] == "queued":
+            # Position 1 = next up (count of queued jobs submitted before it).
+            body["queue_position"] = 1 + sum(
+                1 for r in _async_jobs.values()
+                if r["status"] == "queued" and r["created"] < rec["created"]
+            )
+    p = _get_progress(job_id)
+    body["stage"] = p.get("stage", "queued")
+    body["step"] = p.get("step", 0)
+    body["total"] = p.get("total", 4)
+    return JSONResponse(content=body)
 
 
 @app.get("/progress/{progress_id}")
@@ -598,37 +786,52 @@ def get_progress(progress_id: str):
     return JSONResponse(content=p or {"stage": "unknown", "step": 0, "total": 4})
 
 
+def _touch_job(job_id: str) -> None:
+    """Reset the TTL of a job in BOTH stem stores (they're separate dicts with
+    separate locks). Called on every job access so a user who sits editing
+    lyrics for >10 min can still fetch stems / re-render without a 404."""
+    expiry = time.time() + INSTRUMENTAL_TTL_SEC
+    with _jobs_lock:
+        entry = _jobs.get(job_id)
+        if entry is not None:
+            _jobs[job_id] = (entry[0], expiry)
+    with _vocal_jobs_lock:
+        entry = _vocal_jobs.get(job_id)
+        if entry is not None:
+            _vocal_jobs[job_id] = (entry[0], expiry)
+
+
+def _stem_response(path: Path, stem_name: str) -> FileResponse:
+    """FileResponse for a stored stem: real media type + range-request support.
+    F1 shrank stems to ~3-4 MB m4a, which also removed the keep-alive race that
+    once caused Chrome ERR_FAILED 200 on 35 MB WAV bodies. (Plan B if that ever
+    resurfaces: read the small file into RAM and serve a plain Response.)"""
+    return FileResponse(
+        path,
+        media_type=_STEM_MEDIA_TYPES.get(path.suffix, "application/octet-stream"),
+        filename=f"{stem_name}{path.suffix}",
+        content_disposition_type="inline",
+    )
+
+
 @app.get("/instrumental/{job_id}")
 def get_instrumental(job_id: str):
-    """Serve a /karaoke job's instrumental (TTL-bounded, re-fetchable).
-    Reads the whole file into memory before responding so uvicorn's keep-alive
-    timer never fires mid-transfer — eliminates Chrome ERR_FAILED 200 (OK)."""
-    from fastapi.responses import Response as PlainResponse
+    """Serve a /karaoke job's instrumental (TTL-bounded, re-fetchable)."""
     path = _get_instrumental(job_id)
     if path is None:
         return _err(404, "instrumental not found or expired", "instrumental")
-    data = path.read_bytes()
-    return PlainResponse(
-        content=data,
-        media_type="audio/wav",
-        headers={"Content-Disposition": 'inline; filename="instrumental.wav"'},
-    )
+    _touch_job(job_id)
+    return _stem_response(path, "instrumental")
 
 
 @app.get("/vocal/{job_id}")
 def get_vocal(job_id: str):
-    """Serve a /karaoke job's vocal stem (TTL-bounded, re-fetchable).
-    Same in-memory pattern as get_instrumental to avoid Chrome ERR_FAILED."""
-    from fastapi.responses import Response as PlainResponse
+    """Serve a /karaoke job's vocal stem (TTL-bounded, re-fetchable)."""
     path = _get_vocal(job_id)
     if path is None:
         return _err(404, "vocal not found or expired", "vocal")
-    data = path.read_bytes()
-    return PlainResponse(
-        content=data,
-        media_type="audio/wav",
-        headers={"Content-Disposition": 'inline; filename="vocals.wav"'},
-    )
+    _touch_job(job_id)
+    return _stem_response(path, "vocals")
 
 
 # sync `def`: ffmpeg burn must run in the threadpool, not the event loop.
@@ -656,6 +859,92 @@ def render_song(
     try:
         with _inference_lock:
             result = render.render_video(audio_path, ass, tmpdir)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("render failed")
+        return _cleanup_err(tmpdir, 500, str(e), "render")
+
+    return FileResponse(
+        result.video_path,
+        media_type="video/mp4",
+        filename="karaoke.mp4",
+        background=BackgroundTask(shutil.rmtree, tmpdir, ignore_errors=True),
+    )
+
+
+# sync `def`: ffmpeg burn must run in the threadpool, not the event loop.
+@app.post("/render/{job_id}")
+def render_from_job(job_id: str, payload: dict = Body(...)):
+    """F2: re-render the karaoke video from a parked /karaoke instrumental.
+
+    Closes the edit loop: the player POSTs its corrected lyrics here and gets a
+    fresh mp4 — no re-upload of audio. Body (JSON), one of:
+        {"lines": [[{text,start,end}, ...], ...]}   # preferred: player's lines
+        {"words": [{text,start,end}, ...]}          # flat; server re-breaks lines
+    The ASS is built server-side from the edited words (reuse lrc.to_lines +
+    to_ass — no client-side ASS serializer). Words are NOT re-tokenized: what
+    the user edited is already the token stream.
+
+    Body is a plain dict (not a Pydantic model) so validation failures return
+    the repo's {error, stage} shape via _err(400, ...) instead of FastAPI's 422.
+    """
+    lines_in = payload.get("lines")
+    words_in = payload.get("words")
+    try:
+        if lines_in:
+            groups = [[Word(**w) for w in ln] for ln in lines_in if ln]
+        elif words_in:
+            # One outer group: lrc._split_words re-breaks it on gaps/width.
+            groups = [[Word(**w) for w in words_in]]
+        else:
+            groups = []
+    except Exception as e:  # noqa: BLE001 - malformed word dicts -> 400
+        return _err(400, f"bad word payload: {e}", "render")
+    flat = [w for g in groups for w in g]
+    if not flat:
+        return _err(400, "no words to render", "render")
+
+    # F8: optional style fields (only this endpoint — the server builds the ASS
+    # here; the legacy /render takes a finished ASS where style can't apply).
+    style_kwargs = {
+        k: payload[k]
+        for k in ("font", "font_size", "primary_colour", "highlight_colour",
+                  "alignment", "margin_v")
+        if payload.get(k) is not None
+    }
+    font_override = style_kwargs.get("font")
+    if font_override is not None and font_override not in _allowed_render_fonts():
+        return _err(
+            400,
+            f"font {font_override!r} not in allowlist (set RENDER_FONTS_EXTRA to add fonts)",
+            "render",
+        )
+    try:
+        for k in ("font_size", "alignment", "margin_v"):
+            if k in style_kwargs:
+                style_kwargs[k] = int(style_kwargs[k])
+        style = lrc.AssStyle(**style_kwargs)
+    except (TypeError, ValueError) as e:
+        return _err(400, f"bad style: {e}", "render")
+
+    instrumental = _get_instrumental(job_id)
+    if instrumental is None:
+        return _err(404, "job not found or expired", "render")
+    # Editing sessions easily outlive the 10-min TTL; renew on use.
+    _touch_job(job_id)
+
+    try:
+        ass_text = to_ass(to_lines(flat, groups), style)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("ass build failed")
+        return _err(500, str(e), "render")
+
+    tmpdir = tempfile.mkdtemp(prefix="karaoke_rerender_")
+    try:
+        # ffmpeg may touch the GPU (NVENC) -> same lock as /render.
+        with _inference_lock:
+            result = render.render_video(
+                instrumental, ass_text, tmpdir, font=font_override
+            )
     except Exception as e:  # noqa: BLE001
         logger.exception("render failed")
         return _cleanup_err(tmpdir, 500, str(e), "render")

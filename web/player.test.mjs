@@ -11,13 +11,34 @@ import {
   buildModel,
   serializeLrc,
   serializeWords,
+  serializeLines,
   serializePayload,
+  renderVideoViaServer,
+  buildRenderStyle,
   syncWordStart,
   transcribeViaServer,
   karaokeViaServer,
   withOffset,
   stageLabel,
+  LOW_CONF,
+  isLowConfidence,
+  syncQuality,
+  submitKaraokeJob,
+  pollKaraokeJob,
+  saveJobRef,
+  loadJobRef,
+  clearJobRef,
 } from "./player.js";
+
+// Map-backed stand-in for localStorage (node has no DOM storage).
+function fakeStorage() {
+  const m = new Map();
+  return {
+    setItem: (k, v) => m.set(k, String(v)),
+    getItem: (k) => (m.has(k) ? m.get(k) : null),
+    removeItem: (k) => m.delete(k),
+  };
+}
 
 function lines(...lineWordArrays) {
   return lineWordArrays.map((ws) => ({ words: ws }));
@@ -100,6 +121,94 @@ test("serializePayload produces a /transcribe-shaped, re-ingestible object", () 
   // feeding it back through buildModel works (round-trip)
   const m = buildModel(p);
   assert.equal(m.words.length, 2);
+});
+
+test("serializeLines keeps line structure and strips words to text/start/end", () => {
+  const ls = lines(
+    [{ text: "ก", start: 0, end: 1, _i: 0, extra: "x" }, { text: "ข", start: 1, end: 2, _i: 1 }],
+    [],                                              // empty line dropped
+    [{ text: "ค", start: 5, end: 6, _i: 2 }]
+  );
+  assert.deepEqual(serializeLines(ls), [
+    [{ text: "ก", start: 0, end: 1 }, { text: "ข", start: 1, end: 2 }],
+    [{ text: "ค", start: 5, end: 6 }],
+  ]);
+});
+
+test("serializeLines round-trips with serializeWords (flatten equals flat)", () => {
+  const ls = lines(
+    [{ text: "ก", start: 0, end: 1 }, { text: "ข", start: 1, end: 2 }],
+    [{ text: "ค", start: 5, end: 6 }]
+  );
+  assert.deepEqual(serializeLines(ls).flat(), serializeWords(ls));
+  // and the payload exporter agrees on the same word stream
+  assert.deepEqual(serializePayload(ls).words, serializeLines(ls).flat());
+});
+
+test("renderVideoViaServer posts JSON lines to /render/{job_id} and returns a blob", async () => {
+  let seenUrl, seenMethod, seenBody, seenType;
+  const fakeBlob = { fake: "blob" };
+  const fakeFetch = async (url, opts) => {
+    seenUrl = url;
+    seenMethod = opts.method;
+    seenType = opts.headers["Content-Type"];
+    seenBody = JSON.parse(opts.body);
+    return { ok: true, blob: async () => fakeBlob };
+  };
+  const ls = [[{ text: "ก", start: 0, end: 1 }]];
+  const out = await renderVideoViaServer("job42", ls, "http://localhost:8000/", fakeFetch);
+  assert.equal(seenUrl, "http://localhost:8000/render/job42"); // trailing slash trimmed
+  assert.equal(seenMethod, "POST");
+  assert.equal(seenType, "application/json");
+  assert.deepEqual(seenBody, { lines: ls });
+  assert.equal(out, fakeBlob);
+});
+
+test("buildRenderStyle normalizes UI values and drops junk", () => {
+  assert.deepEqual(
+    buildRenderStyle({
+      font: "Noto Sans Thai",
+      fontSize: "64",
+      primary: "#ffffff",     // colour input gives #rrggbb
+      highlight: "FFA500",    // already bare hex
+      alignment: "8",
+    }),
+    { font: "Noto Sans Thai", font_size: 64, primary_colour: "FFFFFF",
+      highlight_colour: "FFA500", alignment: 8 }
+  );
+  // junk in -> dropped (server defaults apply), never throws
+  assert.deepEqual(
+    buildRenderStyle({ fontSize: "huge", primary: "red", alignment: "" }),
+    {}
+  );
+  assert.deepEqual(buildRenderStyle(), {});
+});
+
+test("renderVideoViaServer merges style fields into the JSON body", async () => {
+  let seenBody;
+  const fakeFetch = async (url, opts) => {
+    seenBody = JSON.parse(opts.body);
+    return { ok: true, blob: async () => ({}) };
+  };
+  const ls = [[{ text: "ก", start: 0, end: 1 }]];
+  await renderVideoViaServer("j1", ls, "http://localhost:8000", fakeFetch,
+    { font: "Sarabun", font_size: 64 });
+  assert.deepEqual(seenBody, { lines: ls, font: "Sarabun", font_size: 64 });
+  // and without a style the body stays lines-only (back-compat)
+  await renderVideoViaServer("j1", ls, "http://localhost:8000", fakeFetch);
+  assert.deepEqual(seenBody, { lines: ls });
+});
+
+test("renderVideoViaServer surfaces the server's stage/error on failure", async () => {
+  const fakeFetch = async () => ({
+    ok: false,
+    status: 404,
+    json: async () => ({ error: "job not found or expired", stage: "render" }),
+  });
+  await assert.rejects(
+    () => renderVideoViaServer("gone", [], "http://localhost:8000", fakeFetch),
+    /render: job not found or expired/
+  );
 });
 
 test("syncWordStart pins a start and keeps the line non-overlapping", () => {
@@ -213,6 +322,158 @@ test("karaokeViaServer forwards the progress_id to the server", async () => {
   };
   await karaokeViaServer(new Blob(["s"]), "http://localhost:8000", fakeFetch, "pid-123");
   assert.equal(hasPid, true);
+});
+
+test("syncQuality grades payloads across all branches and thresholds", () => {
+  // no sync info at all (pre-sync-era JSON) -> null = show no badge
+  assert.equal(syncQuality({}), null);
+  assert.equal(syncQuality(null), null);
+  // aligned false -> rough, no pct
+  assert.deepEqual(syncQuality({ aligned: false }), { level: "rough", pct: null });
+  // aligned true but no counts (e.g. hand-edited export) -> good, no pct
+  assert.deepEqual(syncQuality({ aligned: true }), { level: "good", pct: null });
+  assert.deepEqual(
+    syncQuality({ aligned: true, total_segment_count: 0 }),
+    { level: "good", pct: null }                      // total=0 guarded
+  );
+  // threshold edges: pct >= 80 good, >= 40 partial, below rough
+  const q = (deg, tot) =>
+    syncQuality({ aligned: true, degraded_segment_count: deg, total_segment_count: tot });
+  assert.deepEqual(q(0, 10), { level: "good", pct: 100 });
+  assert.deepEqual(q(2, 10), { level: "good", pct: 80 });      // exactly 80 -> good
+  assert.deepEqual(q(3, 10), { level: "partial", pct: 70 });
+  assert.deepEqual(q(6, 10), { level: "partial", pct: 40 });   // exactly 40 -> partial
+  assert.deepEqual(q(7, 10), { level: "rough", pct: 30 });
+});
+
+test("syncQuality grades a real eval payload from out_vocals_fixed", async () => {
+  const { readFile, readdir } = await import("node:fs/promises");
+  const dir = new URL("../server/tests/out_vocals_fixed/", import.meta.url);
+  const jsons = (await readdir(dir)).filter((f) => f.endsWith(".json"));
+  if (!jsons.length) return; // eval outputs not present in this checkout
+  const payload = JSON.parse(await readFile(new URL(jsons[0], dir), "utf8"));
+  const quality = syncQuality(payload);
+  assert.ok(quality === null || ["good", "partial", "rough"].includes(quality.level));
+  // these known eval files are aligned:true -> must NOT come out "rough"
+  if (payload.aligned === true) assert.notEqual(quality.level, "rough");
+});
+
+test("submitKaraokeJob posts the song and returns the job ref", async () => {
+  let seenUrl, seenHasFile, seenLang;
+  const fakeFetch = async (url, opts) => {
+    seenUrl = url;
+    seenHasFile = opts.body instanceof FormData && opts.body.has("file");
+    seenLang = opts.body.get("lang");
+    return { ok: true, status: 202, json: async () => ({ job_id: "j1", status_url: "/jobs/j1" }) };
+  };
+  const out = await submitKaraokeJob(new Blob(["song"]), "http://localhost:8000/", fakeFetch);
+  assert.equal(seenUrl, "http://localhost:8000/jobs/karaoke");
+  assert.equal(seenHasFile, true);
+  assert.equal(seenLang, "th");
+  assert.equal(out.job_id, "j1");
+});
+
+test("submitKaraokeJob returns null on 404 (old server -> legacy fallback)", async () => {
+  const fakeFetch = async () => ({ ok: false, status: 404, json: async () => ({}) });
+  assert.equal(await submitKaraokeJob(new Blob(["x"]), "http://localhost:8000", fakeFetch), null);
+});
+
+test("submitKaraokeJob surfaces a full queue (429) as stage error", async () => {
+  const fakeFetch = async () => ({
+    ok: false,
+    status: 429,
+    json: async () => ({ error: "queue full (3 jobs waiting); try again later", stage: "queue" }),
+  });
+  await assert.rejects(
+    () => submitKaraokeJob(new Blob(["x"]), "http://localhost:8000", fakeFetch),
+    /queue: queue full/
+  );
+});
+
+test("pollKaraokeJob loops until done, reporting each status, then stops", async () => {
+  const statuses = [
+    { status: "queued", queue_position: 2, stage: "queued", step: 0 },
+    { status: "running", stage: "separating", step: 1 },
+    { status: "done", stage: "done", step: 4, result: { words: [], lrc: "", job_id: "j1" } },
+  ];
+  let calls = 0;
+  const seen = [];
+  const fakeFetch = async () => ({ ok: true, json: async () => statuses[calls++] });
+  const result = await pollKaraokeJob("j1", "http://localhost:8000/", {
+    fetchImpl: fakeFetch,
+    sleep: async () => {},                  // no real timers in tests
+    onUpdate: (st) => seen.push(st.status),
+  });
+  assert.equal(calls, 3);                   // stopped exactly at "done"
+  assert.deepEqual(seen, ["queued", "running", "done"]);
+  assert.equal(result.job_id, "j1");
+});
+
+test("pollKaraokeJob throws the job's stage/error when it failed", async () => {
+  const fakeFetch = async () => ({
+    ok: true,
+    json: async () => ({ status: "error", error: { error: "Demucs exploded", stage: "separate" } }),
+  });
+  await assert.rejects(
+    () => pollKaraokeJob("j9", "http://localhost:8000", { fetchImpl: fakeFetch, sleep: async () => {} }),
+    /separate: Demucs exploded/
+  );
+});
+
+test("job ref round-trips through storage and survives junk", () => {
+  const s = fakeStorage();
+  assert.equal(loadJobRef(s), null);                      // empty -> null
+  saveJobRef(s, "job42", "http://localhost:8000");
+  assert.deepEqual(loadJobRef(s), { jobId: "job42", base: "http://localhost:8000" });
+  clearJobRef(s);
+  assert.equal(loadJobRef(s), null);                      // cleared
+  s.setItem("lyricbridgeJob", "{not json");
+  assert.equal(loadJobRef(s), null);                      // junk -> null, no throw
+});
+
+test("isLowConfidence flags only known-low scores (old payloads never flag)", () => {
+  assert.equal(isLowConfidence({ confidence: LOW_CONF - 0.1 }), true);
+  assert.equal(isLowConfidence({ confidence: LOW_CONF }), false);      // at threshold = ok
+  assert.equal(isLowConfidence({ confidence: 0.9 }), false);
+  assert.equal(isLowConfidence({}), false);                            // pre-F3 payload
+  assert.equal(isLowConfidence({ confidence: null }), false);          // unknown ≠ bad
+  assert.equal(isLowConfidence(undefined), false);
+});
+
+test("buildModel keeps word confidence through to the view-model", () => {
+  const payload = {
+    lrc: "[00:00.00]ก",
+    words: [
+      { text: "ก", start: 0, end: 1, confidence: 0.3 },
+      { text: "ข", start: 1, end: 2 }, // old-style word without the field
+    ],
+  };
+  const m = buildModel(payload);
+  assert.equal(m.words[0].confidence, 0.3);
+  assert.equal(m.words[1].confidence, undefined);
+});
+
+test("serializeWords drops runtime hints (confidence/interpolated/roman) from exports", () => {
+  // F3/F6/F7: an edited export is "confirmed" — none of the hint fields leave.
+  const ls = lines([
+    { text: "ก", start: 1, end: 2, confidence: 0.4, interpolated: true, roman: "ko", _i: 0 },
+  ]);
+  assert.deepEqual(serializeWords(ls), [{ text: "ก", start: 1, end: 2 }]);
+  assert.deepEqual(serializeLines(ls), [[{ text: "ก", start: 1, end: 2 }]]);
+});
+
+test("buildModel passes interpolated and roman through to the view-model", () => {
+  const payload = {
+    lrc: "[00:00.00]ก",
+    words: [
+      { text: "ก", start: 0, end: 1, interpolated: true, roman: "ko" },
+      { text: "ข", start: 1, end: 2 }, // pre-F6/F7 word -> no flags, no error
+    ],
+  };
+  const m = buildModel(payload);
+  assert.equal(m.words[0].interpolated, true);
+  assert.equal(m.words[0].roman, "ko");
+  assert.equal(m.words[1].interpolated, undefined);
 });
 
 test("buildModel assigns a contiguous flat index across all line words", () => {

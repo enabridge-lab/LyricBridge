@@ -239,12 +239,18 @@ vocal.wav
 
 ### Pipeline / media endpoints (as built — M1–M3)
 - **`POST /separate`** — full song (`.mp3`/`.mp4`/`.wav`/video) → zip of `vocals.wav` + `instrumental.wav` (M1).
-- **`POST /karaoke`** — **one-upload flow:** full song → separate → transcribe in one call; returns the lyrics JSON (as `/transcribe`) plus a `job_id`. Publishes live per-stage progress.
+- **`POST /karaoke`** — **one-upload flow:** full song → separate → transcribe in one call; returns the lyrics JSON (as `/transcribe`) plus a `job_id`. Publishes live per-stage progress. *Deprecated for new clients in favour of the async queue below (kept for backward compat).*
+- **`POST /jobs/karaoke`** / **`GET /jobs/{job_id}`** — **async queue (as built, F4):** same multipart contract, but returns **202** `{job_id, status_url}` immediately; the browser polls `/jobs/{id}` for `{status, stage, step, result, error, queue_position}`. Single FIFO worker thread + in-memory dict (no new dependencies — self-host promise holds); jobs still run one at a time (VRAM invariant). `MAX_QUEUED_JOBS` (default 3) → 429 when full; finished records swept after `JOB_RESULT_TTL_SEC` (default 1800). The web player stores the in-flight job in `localStorage`, so a page refresh resumes polling instead of losing the run.
 - **`GET /progress/{progress_id}`** — current stage of a running `/karaoke` job (browser polls this; step 0–4).
-- **`GET /instrumental/{job_id}`** — one-time download of the instrumental parked by `/karaoke` (opaque id, TTL-swept).
+- **`GET /instrumental/{job_id}`** / **`GET /vocal/{job_id}`** — stems parked by `/karaoke` (opaque id, TTL-swept; every access renews the TTL). Served as **M4A/AAC** (~10× smaller than WAV; `STEM_BITRATE`, default `128k`) with range-request support; `STEM_ENCODE=0` or an ffmpeg failure falls back to raw WAV. Note: AAC adds ~20–50 ms encoder delay — the player's sync-offset slider absorbs it.
 - **`POST /render`** — instrumental audio + ASS subtitles → burned karaoke `.mp4` (M3).
+- **`POST /render/{job_id}`** — re-render from the parked instrumental with **edited** lyrics (`{"lines": [[{text,start,end},…],…]}` from the player). Closes the post-edit loop without re-uploading audio; ASS is rebuilt server-side via `lrc.to_lines`/`to_ass` (words are not re-tokenized — the user's edits are the tokens). **Style (as built, F8):** optional flat fields `font, font_size, primary_colour, highlight_colour, alignment, margin_v` feed `lrc.AssStyle` (defaults reproduce the historic header byte-for-byte; colours are web RRGGBB converted to ASS BGR; fonts restricted to an allowlist + `RENDER_FONTS_EXTRA` because the name lands in an ffmpeg filter string). The legacy `/render` takes finished ASS text, so style fields don't apply there.
 
 > Statelessness holds across all of these: each works in a temp dir and cleans up; only the `/karaoke` instrumental is parked briefly behind an opaque job id. No user audio is persisted.
+>
+> **Confidence (as built, F3):** every word in a lyrics response carries `confidence` (0..1, segment-level — whisper's `avg_logprob`/`no_speech_prob`, no extra model calls; whisper tokens don't map 1:1 to PyThaiNLP tokens so per-word mapping is deliberately not attempted). The player underlines words below 0.55 in orange to point the post-edit eye at the shaky spots; payloads without the field (pre-F3 exports) load unchanged.
+>
+> **Word hints & badge (as built, F5–F7):** `Word.interpolated` flags words whose timing was guessed rather than char-aligned (player fades them; user-set times clear the flag), and `Word.roman` carries a PyThaiNLP `royin` romanization for Thai learners (🔤 toggle; `ROMANIZE=0` to disable). The player's `syncQuality()` turns `aligned` + degraded counts into a 🟢/🟡/🔴 badge so the timing expectation is set before singing. All of these are optional-with-default schema fields — old payloads load unchanged — and none of them (confidence/interpolated/roman) are written into edited exports.
 
 ## 7.4 Module responsibilities
 

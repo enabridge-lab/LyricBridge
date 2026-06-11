@@ -207,6 +207,30 @@ def test_resolve_instrumental_skips_summing_for_2stem_models(tmp_path, monkeypat
     assert out.read_bytes() == b"native instrumental"
 
 
+def test_segment_confidence_maps_logprobs_to_0_1():
+    # F3: pure mapping from faster-whisper segment scores to a 0..1 confidence.
+    from app import asr
+
+    high = asr.segment_confidence(-0.2, 0.05)   # confident decode, clear speech
+    low = asr.segment_confidence(-1.5, 0.05)    # shaky decode (melisma-style)
+    assert high is not None and low is not None
+    assert high > 0.7
+    assert low < 0.3
+    assert high > low
+
+    # decoder thought it probably wasn't speech at all -> confidence collapses
+    suspect = asr.segment_confidence(-0.2, 0.9)
+    assert suspect < 0.15
+
+    # no data -> None (old callers / models that don't expose the scores)
+    assert asr.segment_confidence(None, None) is None
+    assert asr.segment_confidence(None, 0.1) is None
+
+    # clamped: positive logprob can't exceed 1.0; result never negative
+    assert asr.segment_confidence(0.5, None) == 1.0
+    assert 0.0 <= asr.segment_confidence(-10.0, 1.0) <= 1.0
+
+
 def test_is_oom_error_detects_cuda_oom():
     from app import asr
 
@@ -259,6 +283,55 @@ def test_render_vcodec_uses_nvenc_when_available(tmp_path, monkeypatch):
     cmd = render.ffmpeg_command(tmp_path / "a.wav", tmp_path / "s.ass", tmp_path / "o.mp4")
     assert "h264_nvenc" in cmd
     assert cmd[cmd.index("-preset") + 1] == "p4"  # nvenc preset scale
+
+
+def test_encode_stem_produces_smaller_playable_m4a(tmp_path):
+    # F1: a real (tiny) WAV encodes to an m4a that ffprobe identifies as AAC
+    # and that is smaller than the source. Uses the system ffmpeg like prod.
+    import shutil as _sh
+    import subprocess
+
+    import numpy as np
+
+    import pytest
+
+    from app import render
+
+    if not _sh.which("ffmpeg") or not _sh.which("ffprobe"):
+        pytest.skip("ffmpeg/ffprobe not installed")
+
+    src = tmp_path / "stem.wav"
+    sr = 44100
+    t = np.linspace(0, 2.0, sr * 2, endpoint=False)
+    _write_wav(src, sr, (0.3 * np.sin(2 * np.pi * 440 * t)).reshape(-1, 1))
+
+    dest = render.encode_stem(src, tmp_path / "stem.m4a")
+    assert dest.exists() and dest.stat().st_size > 0
+    assert dest.stat().st_size < src.stat().st_size  # compressed
+
+    codec = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a:0",
+         "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(dest)],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert codec == "aac"
+
+
+def test_encode_stem_raises_on_bad_input(tmp_path):
+    # Caller (main._encode_stem_or_wav) relies on a raised error to fall back.
+    import shutil as _sh
+
+    import pytest
+
+    from app import render
+
+    if not _sh.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+
+    bad = tmp_path / "not_audio.wav"
+    bad.write_bytes(b"this is not a wav file")
+    with pytest.raises(RuntimeError):
+        render.encode_stem(bad, tmp_path / "out.m4a")
 
 
 def test_render_stage_ass_writes_text_and_copies_file(tmp_path):
@@ -338,6 +411,51 @@ def test_map_words_skips_combining_marks_when_matching():
     assert words[0].end >= words[0].start
 
 
+def test_map_words_flags_interpolated_per_word():
+    # F6: matched tokens keep interpolated=False; the unmatched middle token
+    # (its span is spread between neighbours) is flagged True.
+    chars = [CharTiming("ก", 0.0, 1.0)] + [CharTiming("ค", 3.0, 4.0)]  # 'ข' missing
+    words = thai.map_words(["ก", "ข", "ค"], 0.0, 5.0, chars)
+    assert [w.interpolated for w in words] == [False, True, False]
+
+
+def test_map_words_without_chars_flags_all_interpolated():
+    # F6: no char timings at all -> the whole segment's timing is guessed.
+    words = thai.map_words(["ฉัน", "คิดถึง", "เธอ"], 10.0, 13.0, None)
+    assert all(w.interpolated for w in words)
+
+
+def test_enforce_monotonic_preserves_interpolated_flags():
+    # F6: the monotonic pass mutates times in place — flags must survive.
+    words = [
+        Word(text="ก", start=0.0, end=1.0, interpolated=False),
+        Word(text="ข", start=0.5, end=0.4, interpolated=True),  # overlaps -> fixed
+    ]
+    out = thai._enforce_monotonic(words, 0.0, 2.0)
+    assert [w.interpolated for w in out] == [False, True]
+    assert out[1].start >= out[0].end  # and it still did its job
+
+
+def test_romanize_word_returns_reading_and_degrades_safely(monkeypatch):
+    # F7: royin gives a non-empty reading; a broken engine -> "" (never raises).
+    # NOTE: pythainlp silently falls back on unknown engine names, so the
+    # failure path is exercised by breaking the romanize function itself.
+    assert thai.romanize_word("รัก") != ""
+
+    import importlib
+
+    # pythainlp shadows the submodule with a same-named function at package
+    # level, so reach the real module via importlib.
+    tl = importlib.import_module("pythainlp.transliterate")
+
+    def boom(*a, **k):
+        raise RuntimeError("engine exploded")
+
+    monkeypatch.setattr(tl, "romanize", boom)
+    monkeypatch.setattr(thai, "_romanize_warned", False)
+    assert thai.romanize_word("รัก") == ""  # degraded, no exception
+
+
 def test_split_windows_short_segment_is_single_window():
     from app import align
 
@@ -413,6 +531,79 @@ def test_line_timing_offsets_nearest_match():
     # Empty reference -> no offsets, reported as None (not a crash).
     empty = em.line_timing_offsets([1.0], [])
     assert empty.median_offset is None
+
+
+def test_hex_to_ass_colour_swaps_to_bgr():
+    # F8: ASS colours are little-endian BGR — the classic byte-order trap.
+    from app.lrc import _hex_to_ass_colour
+
+    assert _hex_to_ass_colour("FFA500") == "&H0000A5FF"  # web orange
+    assert _hex_to_ass_colour("112233") == "&H00332211"
+    assert _hex_to_ass_colour("ffffff") == "&H00FFFFFF"  # lowercase ok
+    import pytest
+
+    for bad in ("FFF", "GGGGGG", "#FFFFFF", "", "FFFFFF00"):
+        with pytest.raises(ValueError):
+            _hex_to_ass_colour(bad)
+
+
+def test_default_ass_style_reproduces_historic_header_exactly():
+    # F8: default AssStyle must not change existing output by a single byte.
+    from app.lrc import AssStyle, _ass_header
+
+    legacy = """[Script Info]
+ScriptType: v4.00+
+PlayResX: 1280
+PlayResY: 720
+WrapStyle: 2
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Sarabun,48,&H00FFFFFF,&H0000A5FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,3,1,2,40,40,40,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    assert _ass_header(AssStyle()) == legacy
+
+
+def test_ass_style_rejects_out_of_range_values():
+    from app.lrc import AssStyle
+
+    import pytest
+
+    with pytest.raises(ValueError):
+        AssStyle(font_size=300)
+    with pytest.raises(ValueError):
+        AssStyle(alignment=0)
+    with pytest.raises(ValueError):
+        AssStyle(primary_colour="not-hex")
+    with pytest.raises(ValueError):
+        AssStyle(font="Sarabun,Injection")
+    with pytest.raises(ValueError):
+        AssStyle(margin_v=9999)
+
+
+def test_to_ass_applies_custom_style():
+    from app.lrc import AssStyle
+
+    words = [Word(text="ก", start=0.0, end=1.0)]
+    lines = to_lines([*words], [words])
+    ass = to_ass(lines, AssStyle(font="Noto Sans Thai", font_size=64,
+                                 primary_colour="112233", alignment=8, margin_v=60))
+    assert "Style: Default,Noto Sans Thai,64,&H00332211," in ass
+    assert ",8,40,40,60,1" in ass  # alignment + margin_v landed
+
+
+def test_render_ffmpeg_command_font_override(tmp_path):
+    # F8: a per-request font overrides RENDER_FONT in the subtitles filter.
+    from app import render
+
+    cmd = render.ffmpeg_command(
+        tmp_path / "a.wav", tmp_path / "s.ass", tmp_path / "o.mp4", font="Sarabun"
+    )
+    vf = cmd[cmd.index("-vf") + 1]
+    assert vf.endswith("force_style=FontName=Sarabun")
 
 
 def test_lrc_and_ass_build():

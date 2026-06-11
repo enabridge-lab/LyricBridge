@@ -11,11 +11,38 @@ Two jobs:
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 
 from .schemas import Word
 
 logger = logging.getLogger(__name__)
+
+# F7: romanization engine for Word.roman. royin (Royal Institute standard) is
+# rule-based and ships inside pythainlp — no extra packages needed.
+ROMANIZE_ENGINE = os.getenv("ROMANIZE_ENGINE", "royin")
+_romanize_warned = False
+
+
+def romanize_word(text: str) -> str:
+    """Romanized reading of a Thai word, or "" when the engine can't.
+
+    Degrades, never raises: a broken/missing engine logs ONE warning and then
+    returns "" for everything (the pipeline and player work fine without it).
+    """
+    global _romanize_warned
+    try:
+        from pythainlp.transliterate import romanize
+
+        return romanize(text, engine=ROMANIZE_ENGINE) or ""
+    except Exception as e:  # noqa: BLE001
+        if not _romanize_warned:
+            logger.warning(
+                "romanize engine %r unavailable; Word.roman disabled: %s",
+                ROMANIZE_ENGINE, e,
+            )
+            _romanize_warned = True
+        return ""
 
 
 @dataclass
@@ -65,7 +92,11 @@ def _interpolate(tokens: list[str], seg_start: float, seg_end: float) -> list[Wo
     cursor = seg_start
     for tok, w in zip(tokens, weights):
         dur = span * (w / total)
-        words.append(Word(text=tok, start=round(cursor, 3), end=round(cursor + dur, 3)))
+        # F6: the whole segment's timing is guessed — flag every word.
+        words.append(
+            Word(text=tok, start=round(cursor, 3), end=round(cursor + dur, 3),
+                 interpolated=True)
+        )
         cursor += dur
     return words
 
@@ -153,8 +184,10 @@ def _resolve_spans(
         cursor = left
         for k, (t, w) in enumerate(zip(gap_tokens, weights)):
             dur = avail * (w / total)
+            # F6: this token had no char match — its span is a guess.
             words[i + k] = Word(
-                text=t, start=round(cursor, 3), end=round(cursor + dur, 3)
+                text=t, start=round(cursor, 3), end=round(cursor + dur, 3),
+                interpolated=True,
             )
             cursor += dur
         i = j

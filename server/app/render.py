@@ -30,6 +30,11 @@ RENDER_FPS = int(os.getenv("RENDER_FPS", "24"))
 # encoder isn't in this ffmpeg build we fall back to libx264 (see _resolve_vcodec).
 RENDER_VCODEC = os.getenv("RENDER_VCODEC", "libx264")
 
+# F1: stems are AAC-encoded before they enter the job store (a raw stem WAV is
+# ~35-50 MB; at 128k AAC it's ~3-4 MB). M4A/AAC because every browser including
+# Safari plays it (Opus in CAF/WebM does not). Tune via STEM_BITRATE.
+STEM_BITRATE = os.getenv("STEM_BITRATE", "128k")
+
 _ENCODER_CACHE: dict[str, bool] = {}
 
 
@@ -77,6 +82,7 @@ def ffmpeg_command(
     out_path: Path,
     *,
     duration: float | None = None,
+    font: str | None = None,
 ) -> list[str]:
     """Build the ffmpeg burn command. Pure (no IO) so it unit-tests cleanly.
 
@@ -85,7 +91,9 @@ def ffmpeg_command(
     filter-escaping rules.
     """
     bg = f"color=c={RENDER_BG}:s={RENDER_WIDTH}x{RENDER_HEIGHT}:r={RENDER_FPS}"
-    vf = f"subtitles={ass_path}:force_style=FontName={RENDER_FONT}"
+    # F8: a caller-chosen font (validated against an allowlist upstream — this
+    # string lands inside an ffmpeg filter) overrides the RENDER_FONT default.
+    vf = f"subtitles={ass_path}:force_style=FontName={font or RENDER_FONT}"
     vcodec = _resolve_vcodec()
     # nvenc uses a "preset pN" scale; libx264 uses named presets. yuv420p keeps
     # the output broadly playable on both.
@@ -112,6 +120,7 @@ def render_video(
     *,
     out_name: str = "karaoke.mp4",
     duration: float | None = None,
+    font: str | None = None,
 ) -> RenderResult:
     """Render a karaoke mp4 from instrumental audio + ASS subtitles.
 
@@ -125,7 +134,7 @@ def render_video(
     _stage_ass(ass, ass_path)
     out_path = work / out_name
 
-    cmd = ffmpeg_command(Path(audio_path), ass_path, out_path, duration=duration)
+    cmd = ffmpeg_command(Path(audio_path), ass_path, out_path, duration=duration, font=font)
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
     except FileNotFoundError as exc:
@@ -142,6 +151,33 @@ def render_video(
         height=RENDER_HEIGHT,
         font=RENDER_FONT,
     )
+
+
+def encode_stem(src_wav: Path, dest: Path, bitrate: str | None = None) -> Path:
+    """Encode a stem WAV to AAC (dest extension decides the container, .m4a).
+
+    Raises RuntimeError on any ffmpeg failure — the caller decides whether to
+    fall back to serving the WAV (main._encode_stem_or_wav does exactly that).
+    NOTE: AAC adds ~20-50 ms of encoder delay; the player's sync-offset slider
+    absorbs it, so we don't compensate here.
+    """
+    bitrate = bitrate or STEM_BITRATE
+    cmd = [
+        "ffmpeg", "-y", "-i", str(src_wav),
+        "-c:a", "aac", "-b:a", bitrate,
+        "-movflags", "+faststart",  # moov atom up front -> browser can seek early
+        str(dest),
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError("ffmpeg not found; required for stem encode") from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or str(exc)).strip()
+        raise RuntimeError(f"ffmpeg stem encode failed: {detail[-300:]}") from exc
+    if not dest.exists() or dest.stat().st_size == 0:
+        raise RuntimeError("ffmpeg produced no stem output")
+    return dest
 
 
 def _stage_ass(ass: str | Path, dest: Path) -> None:

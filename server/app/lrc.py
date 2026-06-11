@@ -10,6 +10,7 @@ from. We carry a per-word `line` index so both formats agree on line breaks.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 
 from .schemas import Word
@@ -111,7 +112,49 @@ def to_lrc(lines: list[Line]) -> str:
     return "\n".join(out)
 
 
-_ASS_HEADER = """[Script Info]
+def _hex_to_ass_colour(hex_rgb: str) -> str:
+    """'RRGGBB' (web order) -> ASS '&H00BBGGRR'.
+
+    ASS stores colours little-endian, i.e. **BGR** — the classic gotcha. So
+    web-orange FFA500 becomes &H0000A5FF, NOT &H00FFA500.
+    Raises ValueError on anything that isn't exactly 6 hex digits.
+    """
+    if not isinstance(hex_rgb, str) or not re.fullmatch(r"[0-9A-Fa-f]{6}", hex_rgb):
+        raise ValueError(f"colour must be 6 hex digits RRGGBB, got {hex_rgb!r}")
+    r, g, b = hex_rgb[0:2], hex_rgb[2:4], hex_rgb[4:6]
+    return f"&H00{b}{g}{r}".upper()
+
+
+@dataclass(frozen=True)
+class AssStyle:
+    """F8: user-tunable ASS style. Defaults reproduce the historic hardcoded
+    header EXACTLY (snapshot-tested) so existing callers' output is unchanged.
+    Colours are web-order RRGGBB hex; conversion to ASS BGR happens at render.
+    """
+
+    font: str = "Sarabun"
+    font_size: int = 48
+    primary_colour: str = "FFFFFF"    # base text colour
+    highlight_colour: str = "FFA500"  # \k sweep colour (ASS SecondaryColour)
+    outline_colour: str = "000000"
+    alignment: int = 2                # ASS numpad: 2=bottom 5=middle 8=top
+    margin_v: int = 40
+
+    def __post_init__(self):
+        if not self.font or any(c in self.font for c in ",\n\r"):
+            raise ValueError(f"bad font name {self.font!r}")
+        if not 8 <= int(self.font_size) <= 200:
+            raise ValueError(f"font_size must be 8..200, got {self.font_size}")
+        if int(self.alignment) not in range(1, 10):
+            raise ValueError(f"alignment must be 1..9 (ASS numpad), got {self.alignment}")
+        if not 0 <= int(self.margin_v) <= 500:
+            raise ValueError(f"margin_v must be 0..500, got {self.margin_v}")
+        for c in (self.primary_colour, self.highlight_colour, self.outline_colour):
+            _hex_to_ass_colour(c)  # raises on bad hex
+
+
+def _ass_header(style: AssStyle) -> str:
+    return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1280
 PlayResY: 720
@@ -119,14 +162,14 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Sarabun,48,&H00FFFFFF,&H0000A5FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,3,1,2,40,40,40,1
+Style: Default,{style.font},{style.font_size},{_hex_to_ass_colour(style.primary_colour)},{_hex_to_ass_colour(style.highlight_colour)},{_hex_to_ass_colour(style.outline_colour)},&H64000000,0,0,0,0,100,100,0,0,1,3,1,{style.alignment},40,40,{style.margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
 
-def to_ass(lines: list[Line]) -> str:
+def to_ass(lines: list[Line], style: AssStyle | None = None) -> str:
     """Render ASS with per-word \\k karaoke sweep tags (centiseconds).
 
     The karaoke clock must cover the WHOLE Dialogue span, else the sweep finishes
@@ -134,7 +177,7 @@ def to_ass(lines: list[Line]) -> str:
     the previous word ended; that makes sum(\\k) == End - Start of the line
     (per-word `\\k` only counts sung time and would drift on gappy luk-thung lines).
     """
-    body = [_ASS_HEADER]
+    body = [_ass_header(style or AssStyle())]
     for ln in lines:
         parts = []
         prev_end = ln.start  # = words[0].start, but be defensive

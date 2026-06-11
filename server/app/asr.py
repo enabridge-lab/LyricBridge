@@ -58,11 +58,38 @@ ASR_BEAM_SIZE = int(os.getenv("ASR_BEAM_SIZE", "5"))
 
 @dataclass
 class Segment:
-    """One ASR segment: a line of text with coarse start/end (seconds)."""
+    """One ASR segment: a line of text with coarse start/end (seconds).
+
+    avg_logprob / no_speech_prob are faster-whisper's own per-segment scores
+    (F3: low-confidence highlighting). Optional so existing callers/tests that
+    build Segments positionally keep working.
+    """
 
     text: str
     start: float
     end: float
+    avg_logprob: float | None = None
+    no_speech_prob: float | None = None
+
+
+def segment_confidence(
+    avg_logprob: float | None, no_speech_prob: float | None
+) -> float | None:
+    """Map faster-whisper segment scores to a 0..1 confidence (F3).
+
+    exp(avg_logprob) is the mean per-token probability (already 0..1 for the
+    negative logprobs whisper emits); a high no_speech_prob means the decoder
+    suspects the window wasn't speech at all, so it scales the confidence down.
+    Pure + total: None in -> None out, result clamped to [0, 1].
+    """
+    if avg_logprob is None:
+        return None
+    import math
+
+    conf = math.exp(min(avg_logprob, 0.0))  # logprob > 0 can't mean > 100%
+    if no_speech_prob is not None:
+        conf *= 1.0 - min(max(no_speech_prob, 0.0), 1.0)
+    return min(max(conf, 0.0), 1.0)
 
 
 # Set True to force the next model load onto CPU (used by the OOM fallback so
@@ -304,7 +331,17 @@ def _transcribe_on(wav_path: str, lang: str, device: str) -> list[Segment]:
         text = collapse_repeats(text)  # kill intra-segment hallucination loops
         if not text:
             continue
-        out.append(Segment(text=text, start=float(s.start), end=float(s.end)))
+        out.append(
+            Segment(
+                text=text,
+                start=float(s.start),
+                end=float(s.end),
+                # F3: carry the decoder's own confidence scores (already
+                # computed by faster-whisper — no word_timestamps needed).
+                avg_logprob=getattr(s, "avg_logprob", None),
+                no_speech_prob=getattr(s, "no_speech_prob", None),
+            )
+        )
     return out
 
 
