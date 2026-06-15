@@ -41,8 +41,10 @@ jobs:
           python-version: "3.12"
           cache: pip
       # Heavy (torch + whisperx + audio-separator) but tests mock all model loads,
-      # so no weights/GPU/network are needed at test time. pytest is a dev-only dep.
-      - run: pip install -r server/requirements.txt pytest
+      # so no weights/GPU/network are needed at test time. pytest + httpx are
+      # test-only deps (httpx backs starlette's TestClient). starlette is pinned in
+      # requirements.txt to a version that uses genuine httpx, so no extra package.
+      - run: pip install -r server/requirements.txt pytest "httpx==0.28.1"
       - run: pytest server/ -q          # 91 mocked tests
       - uses: actions/setup-node@v4
         with:
