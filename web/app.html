@@ -223,6 +223,9 @@
           <div class="export">
             <button id="exportLrc" type="button">⬇ บันทึก LRC</button>
             <button id="exportJson" type="button">⬇ บันทึก JSON</button>
+            <!-- O2: copy lyrics+timing to the clipboard (no server, no hosting —
+                 keeps copyrighted lyrics off any shared link). -->
+            <button id="copyLrc" type="button">📋 คัดลอกเนื้อ (LRC) · Copy lyrics</button>
             <button id="renderVideo" type="button" hidden>🎬 สร้างวิดีโอ · Render video</button>
           </div>
           <!-- F8: video style options (apply to 🎬 render) -->
@@ -244,6 +247,10 @@
                 <option value="5">กลางจอ · Middle</option>
                 <option value="8">บน · Top</option>
               </select></label>
+            <!-- O1: optional background image for the rendered video -->
+            <label>ภาพพื้นหลัง <span class="en">Background image</span>
+              <input id="bgImage" type="file" accept="image/png,image/jpeg,image/webp" /></label>
+            <button id="bgClear" type="button" hidden>ล้างพื้นหลัง · Clear background</button>
           </div>
         </div>
       </details>

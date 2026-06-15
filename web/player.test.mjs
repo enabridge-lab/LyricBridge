@@ -29,6 +29,7 @@ import {
   loadJobRef,
   clearJobRef,
   defaultApiBase,
+  checkBackgroundImage,
   wordProgress,
   verseCountdown,
   clampPlaybackRate,
@@ -518,6 +519,19 @@ test("buildModel assigns a contiguous flat index across all line words", () => {
   assert.equal(m.lines.length, 2);
   assert.equal(m.lines[0].words[0]._i, 0);
   assert.equal(m.lines[1].words[0]._i, 1);
+});
+
+// ── Phase O1: background image client-side guard ───────────────────────────
+test("checkBackgroundImage accepts png/jpeg/webp under the size cap, rejects rest", () => {
+  assert.equal(checkBackgroundImage({ type: "image/png", size: 1000 }).ok, true);
+  assert.equal(checkBackgroundImage({ type: "image/jpeg", size: 1000 }).ok, true);
+  assert.equal(checkBackgroundImage({ type: "image/webp", size: 1000 }).ok, true);
+  assert.equal(checkBackgroundImage({ type: "image/gif", size: 1000 }).ok, false);  // wrong type
+  assert.equal(checkBackgroundImage({ type: "text/plain", size: 10 }).ok, false);
+  assert.equal(checkBackgroundImage(null).ok, false);
+  // size cap (default 8 MB)
+  assert.equal(checkBackgroundImage({ type: "image/png", size: 9 * 1024 * 1024 }).ok, false);
+  assert.equal(checkBackgroundImage({ type: "image/png", size: 3 * 1024 * 1024 }, 2).ok, false);
 });
 
 // ── Phase S: sing-mode pure helpers ────────────────────────────────────────
