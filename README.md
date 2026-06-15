@@ -91,7 +91,7 @@ cd web && node --test                          # frontend (17 tests)
 - [`docs/PIPELINE.md`](docs/PIPELINE.md) — **bilingual (TH/EN)** full pipeline + models explainer
 - [`docs/REPRODUCIBLE_CLONE.md`](docs/REPRODUCIBLE_CLONE.md) — clone→run, publish + pin the model, license
 - [`docs/RUN_IT_YOURSELF.md`](docs/RUN_IT_YOURSELF.md) — full self-host + all env vars
-- [`docs/PERFORMANCE_TUNING.md`](docs/PERFORMANCE_TUNING.md) — speed tuning spec
+- [`docs/MODAL_DEPLOYMENT.md`](docs/MODAL_DEPLOYMENT.md) — hosted demo on Modal · [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — ops & rollback
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system design · [`docs/COPYRIGHT_AND_LICENSES.md`](docs/COPYRIGHT_AND_LICENSES.md) — legal notes
 - [`PRD.md`](PRD.md) — product spec · [`CLAUDE.md`](CLAUDE.md) — build constraints
 

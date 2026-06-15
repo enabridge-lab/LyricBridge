@@ -3,6 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- D4: single config point for the backend URL. Empty in the repo so a
+       self-host clone falls back to http://localhost:8000 (see player.js
+       defaultApiBase). The GitHub Pages build sets `content` to the Modal URL
+       (injected by the P1 deploy workflow, or edited for a manual publish) so a
+       hosted-demo visitor needs zero setup. The server field stays editable. -->
+  <meta name="lyricbridge-api-base" content="" />
   <title>LyricBridge — ร้องตามเนื้อทีละคำ</title>
   <link rel="icon" href="data:," /><!-- no favicon: suppress the auto /favicon.ico request -->
   <link rel="stylesheet" href="style.css" />
@@ -179,6 +185,19 @@
         </div>
       </details>
     </section>
+
+    <!-- P4: privacy + copyright honesty note. TTL number must match STEM_TTL_SEC. -->
+    <footer class="privacy-note">
+      <p>
+        🔒 <strong>ความเป็นส่วนตัว:</strong> ไฟล์เพลงที่อัปโหลดถูกประมวลผลในที่พักชั่วคราว
+        แล้ว<strong>ลบทันที</strong> ไม่เก็บถาวร — สเต็ม (ดนตรี/เสียงร้อง) ที่สร้างขึ้นถูกลบ
+        ภายในประมาณ 30 นาที. คุณเป็นผู้รับผิดชอบลิขสิทธิ์ของไฟล์ที่อัปโหลด (การแยกสเต็ม
+        ไม่เปลี่ยนลิขสิทธิ์เพลง).
+        <span class="en">Uploaded audio is processed in temp storage and deleted immediately;
+        generated stems are purged within ~30&nbsp;min. You are responsible for the rights to
+        what you upload.</span>
+      </p>
+    </footer>
   </main>
 
   <script type="module" src="player.js?v=7"></script>

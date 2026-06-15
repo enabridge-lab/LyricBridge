@@ -16,6 +16,22 @@ Implications for self-hosters and the demo:
 - A public demo (e.g. on `avocadu14.com`) should make clear that users are
   responsible for the rights to whatever they upload.
 
+## Hosted demo on Modal (the public LyricBridge instance)
+
+The hosted demo (`https://chkrap47--lyricbridge-web.modal.run`, frontend on GitHub
+Pages) makes two things explicit, for honesty (PRD "document risks honestly"):
+
+- **The "cloud gets only the vocal stem" locked decision (PRD §2) is WAIVED for the
+  hosted demo only.** The demo runs the *whole* pipeline on Modal, so the **full song
+  is uploaded** to the cloud. This waiver is **owner-approved** and applies *only* to
+  the public demo — the **self-host path is unchanged** (separation stays on-device
+  there). Separating stems still does not change the song's copyright; the uploader is
+  responsible for the rights to whatever they submit.
+- **No persisted audio.** The GPU worker deletes its temp dir in a `finally` block right
+  after processing (the original upload never lives past one request). Only the generated
+  m4a stems sit in a TTL store (`STEM_TTL_SEC`, default 30 min) so the player can fetch
+  them, then a scheduled sweep purges them. The privacy note in the UI states this TTL.
+
 ## This project's license
 
 **MIT** (see `../LICENSE`). You can self-host, modify, and redistribute the code.

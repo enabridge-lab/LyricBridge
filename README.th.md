@@ -91,7 +91,7 @@ cd web && node --test                          # frontend (17 tests)
 - [`docs/PIPELINE.md`](docs/PIPELINE.md) — อธิบาย pipeline + โมเดลแบบ **สองภาษา**
 - [`docs/REPRODUCIBLE_CLONE.md`](docs/REPRODUCIBLE_CLONE.md) — โคลนแล้วรัน, เผยแพร่+pin โมเดล, ลิขสิทธิ์
 - [`docs/RUN_IT_YOURSELF.md`](docs/RUN_IT_YOURSELF.md) — self-host เต็ม + ตัวแปรทั้งหมด
-- [`docs/PERFORMANCE_TUNING.md`](docs/PERFORMANCE_TUNING.md) — สเปกการจูนความเร็ว
+- [`docs/MODAL_DEPLOYMENT.md`](docs/MODAL_DEPLOYMENT.md) — hosted demo บน Modal · [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — ปฏิบัติการ & rollback
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — การออกแบบระบบ · [`docs/COPYRIGHT_AND_LICENSES.md`](docs/COPYRIGHT_AND_LICENSES.md) — หมายเหตุด้านกฎหมาย
 - [`PRD.md`](PRD.md) — สเปกผลิตภัณฑ์ · [`CLAUDE.md`](CLAUDE.md) — ข้อจำกัดการ build
 
