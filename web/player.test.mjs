@@ -30,6 +30,7 @@ import {
   clearJobRef,
   defaultApiBase,
   cleanWordText,
+  wantsDemo,
 } from "./player.js";
 
 // D4: backend URL resolution — meta override for hosted build, localhost for self-host.
@@ -520,4 +521,16 @@ test("cleanWordText collapses contentEditable whitespace and trims", () => {
   assert.equal(cleanWordText(""), "");
   assert.equal(cleanWordText(null), "");
   assert.equal(cleanWordText(undefined), "");
+});
+
+// D1: ?demo=1 detection (drives auto-loading the pre-baked, no-backend demo).
+test("wantsDemo is true only for demo=1 and never throws on junk", () => {
+  assert.equal(wantsDemo("?demo=1"), true);
+  assert.equal(wantsDemo("demo=1"), true);          // leading ? optional
+  assert.equal(wantsDemo("?foo=bar&demo=1"), true); // among other params
+  assert.equal(wantsDemo("?demo=0"), false);
+  assert.equal(wantsDemo("?demo=true"), false);     // strictly "1"
+  assert.equal(wantsDemo(""), false);
+  assert.equal(wantsDemo(), false);                 // default arg
+  assert.equal(wantsDemo("%%%not-a-query%%%"), false);
 });
