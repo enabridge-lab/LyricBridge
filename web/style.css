@@ -10,7 +10,9 @@
   --panel2: #faf4fe;
   --line:   #ece0f4;   /* soft lavender border */
   --text:   #4b4364;   /* deep muted purple-slate, readable on light */
-  --dim:    #9d92b3;   /* muted lavender-grey */
+  --dim:    #6f6788;   /* muted lavender-grey — darkened to meet WCAG AA 4.5:1 on
+                          white/near-white (was #9d92b3 ≈ 2.91:1; .en text is real
+                          bilingual content, so it must pass contrast) */
   --active: #ff5fa2;   /* vivid pastel pink — current word, pops on light */
   --accent: #9b7be3;   /* soft purple */
   --accent2:#ff9bb8;   /* pastel coral-pink */
@@ -333,4 +335,130 @@ body.has-lyrics .tools { display: block; }
 @media (max-width: 600px) {
   .lyrics { font-size: 1.55rem; }
   .brand h1 { font-size: 1.3rem; }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Phase L — Landing page (index.html). Reuses the pastel theme vars.
+   Mobile-first; WCAG AA contrast; keyboard-visible focus.
+   ════════════════════════════════════════════════════════════════ */
+
+/* Accessible skip link — hidden until focused */
+.skip-link {
+  position: absolute; left: .5rem; top: -3rem;
+  background: var(--panel); color: var(--text);
+  padding: .5rem .8rem; border-radius: 10px; border: 1px solid var(--line);
+  z-index: 100; transition: top .15s ease;
+}
+.skip-link:focus { top: .5rem; }
+
+/* Visible focus ring for keyboard users across the landing */
+.landing a:focus-visible,
+.landing .lp-btn:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Back-to-home link on the player header */
+.home-link {
+  font-size: .85rem; color: var(--accent); text-decoration: none;
+  align-self: flex-start; margin-right: .25rem;
+}
+.home-link:hover { text-decoration: underline; }
+
+.landing main { padding-bottom: 3rem; }
+
+/* Hero */
+.lp-hero { text-align: center; padding: 2.5rem 0 1.5rem; }
+.lp-hero-title {
+  margin: 0 auto; max-width: 18ch; font-size: 2rem; font-weight: 700;
+  line-height: 1.25; letter-spacing: .2px;
+}
+.lp-hero-title .en { display: block; font-size: 1rem; margin-top: .5rem; }
+.lp-hero-sub { max-width: 56ch; margin: 1rem auto 0; font-size: 1.02rem; }
+.lp-hero-sub .en { display: block; font-size: .88rem; margin-top: .35rem; }
+.lp-note { margin-top: .9rem; font-size: .85rem; color: var(--dim); }
+.lp-note .en { display: inline; }
+
+/* CTA buttons — large bold text (AA large-text 3:1+ on these fills) */
+.lp-cta-row {
+  display: flex; flex-wrap: wrap; gap: .8rem; justify-content: center;
+  margin-top: 1.4rem;
+}
+.lp-btn {
+  display: inline-block; padding: .8rem 1.4rem; border-radius: 999px;
+  font-size: 1.05rem; font-weight: 700; text-decoration: none;
+  border: 2px solid transparent; cursor: pointer;
+}
+.lp-btn .en { font-weight: 400; font-size: .85rem; }
+.lp-btn.primary {
+  /* deep purple → enough contrast for white bold text */
+  background: #6f49c0; color: #fff;
+  box-shadow: 0 8px 22px rgba(111, 73, 192, .35);
+}
+.lp-btn.primary .en { color: #efe7ff; }
+.lp-btn.primary:hover { background: #5e3bab; }
+.lp-btn.ghost {
+  background: var(--panel); color: #5e3bab; border-color: #d9c8f2;
+  box-shadow: var(--shadow);
+}
+.lp-btn.ghost .en { color: var(--dim); }
+.lp-btn.ghost:hover { border-color: var(--accent); }
+
+/* Generic landing section */
+.lp-section { max-width: 920px; margin: 2.2rem auto 0; }
+.lp-section > h2 {
+  font-size: 1.4rem; font-weight: 700; margin: 0 0 1rem;
+  text-align: center;
+}
+.lp-section > h2 .en { display: block; font-size: .85rem; }
+.lp-lead { max-width: 64ch; margin: 0 auto; font-size: 1rem; }
+.lp-lead .en { display: block; font-size: .85rem; margin-top: .4rem; }
+
+/* How-it-works steps + feature cards share a responsive grid */
+.lp-steps, .lp-features {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: 1rem; grid-template-columns: repeat(2, 1fr);
+}
+@media (min-width: 760px) { .lp-steps { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 760px) { .lp-features { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 460px) { .lp-steps, .lp-features { grid-template-columns: 1fr; } }
+
+.lp-step, .lp-feature {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1.1rem; box-shadow: var(--shadow);
+}
+.lp-step h3, .lp-feature h3 { margin: .5rem 0 .3rem; font-size: 1.02rem; }
+.lp-step h3 .en, .lp-feature h3 .en { display: block; font-size: .78rem; }
+.lp-step p, .lp-feature p { margin: 0; font-size: .9rem; }
+.lp-step p .en, .lp-feature p .en { display: block; font-size: .78rem; }
+.lp-step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2rem; height: 2rem; border-radius: 50%; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, var(--active), var(--accent2));
+  box-shadow: 0 3px 12px rgba(255, 95, 162, .4);
+}
+.lp-feat-icon { font-size: 1.8rem; line-height: 1; }
+
+/* Trust / OSS / closing blocks */
+.lp-trust p, .lp-oss p { max-width: 64ch; margin: 0 auto .8rem; font-size: .96rem; }
+.lp-trust p .en, .lp-oss p .en { display: block; font-size: .82rem; margin-top: .35rem; }
+.lp-oss { text-align: center; }
+.lp-oss code, .lp-lead code {
+  background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 6px; padding: .05rem .35rem; font-size: .9em;
+}
+.lp-cta-end { text-align: center; padding-bottom: 1rem; }
+
+/* Footer */
+.lp-footer {
+  border-top: 1px solid var(--line); margin-top: 2.5rem;
+  padding: 1.5rem 1.25rem; text-align: center;
+  background: linear-gradient(0deg, rgba(255, 255, 255, .5), transparent);
+}
+.lp-footer p { margin: .25rem 0; font-size: .85rem; }
+.lp-footer a { color: var(--accent); }
+
+@media (max-width: 600px) {
+  .lp-hero-title { font-size: 1.6rem; }
+  .lp-hero { padding-top: 1.5rem; }
 }

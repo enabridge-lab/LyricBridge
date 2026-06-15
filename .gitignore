@@ -34,6 +34,10 @@ server/tests/out_vocals_fixed/
 *.m4a
 *.flac
 web/.fixtures_silent.wav
+# D1 demo asset is copyright-safe (CC / owner's own recording) and intentionally
+# committed so the landing's "ดูตัวอย่าง" plays with no backend. Exception to *.m4a.
+!web/demo/
+!web/demo/demo.m4a
 
 # --- Logs / dev artifacts ---
 server/install.log

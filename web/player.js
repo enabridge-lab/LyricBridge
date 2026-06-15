@@ -322,6 +322,17 @@ export function stageLabel(stage) {
   return m[stage] || { th: "กำลังประมวลผล…", en: "Processing", step: 0 };
 }
 
+// D1: should the app auto-load the pre-baked demo? True when the URL carries
+// `?demo=1` (landing's "ดูตัวอย่าง" button links to app.html?demo=1). Pure +
+// forgiving so it unit-tests without a browser and never throws on junk input.
+export function wantsDemo(search = "") {
+  try {
+    return new URLSearchParams(search).get("demo") === "1";
+  } catch {
+    return false;
+  }
+}
+
 // Pull a "{stage}: {error}" message out of a failed JSON response body.
 async function _serverError(res) {
   let detail = `HTTP ${res.status}`;
@@ -1049,6 +1060,36 @@ function init() {
   }
 
   requestAnimationFrame(highlight);
+
+  // D1: pre-baked demo — play a copyright-safe karaoke example with NO backend,
+  // NO upload, NO GPU. The landing's "ดูตัวอย่าง" button links to app.html?demo=1.
+  // Assets are static under web/demo/. loadModel() handles lyrics; the audio src
+  // points at the local m4a (not payload.instrumental_url), and renderJobId stays
+  // null so the 🎬 render button (which needs a parked server instrumental) stays
+  // hidden for the demo. Degrades gracefully if the assets aren't present yet.
+  async function loadDemo() {
+    try {
+      setStatus("กำลังโหลดตัวอย่าง… · Loading the example", "busy");
+      const res = await fetch("./demo/demo.json");
+      if (!res.ok) throw new Error("demo not found (" + res.status + ")");
+      const payload = await res.json();
+      loadModel(payload);                       // lyrics + tools (no audio here)
+      els.audio.src = "./demo/demo.m4a";        // local asset — no /jobs/* call
+      els.audio.load();
+      document.body.classList.add("has-audio", "has-lyrics");
+      renderJobId = null;                       // no parked instrumental → keep 🎬 hidden
+      markLoaded(els.step0, els.songDrop, els.songName, null);
+      setStatus("ตัวอย่างพร้อมแล้ว — กดเล่นเพื่อร้องตาม · Demo ready — press play", "ok");
+    } catch (err) {
+      setStatus("โหลดตัวอย่างไม่สำเร็จ · Couldn't load the demo — " + err.message, "error");
+    }
+  }
+
+  // Demo intent (explicit) wins over resuming a stale job.
+  if (wantsDemo(typeof location !== "undefined" ? location.search : "")) {
+    loadDemo();
+    return;
+  }
 
   // F4: if a job was still running when the page was refreshed, resume polling
   // it instead of losing the run (fixes the old "don't refresh!" pain).

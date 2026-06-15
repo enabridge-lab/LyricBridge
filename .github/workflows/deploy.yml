@@ -96,10 +96,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Inject the Modal backend URL into the api-base meta
+        # Phase L: the player page moved to web/app.html (index.html is now the
+        # static landing, which carries no api-base meta). Inject into app.html or
+        # the hosted player won't know its backend URL.
         run: |
-          sed -i "s#<meta name=\"lyricbridge-api-base\" content=\"\" />#<meta name=\"lyricbridge-api-base\" content=\"${PROD_URL}\" />#" web/index.html
-          echo "after inject:"; grep lyricbridge-api-base web/index.html
-          grep -q "content=\"${PROD_URL}\"" web/index.html || { echo "meta injection failed"; exit 1; }
+          sed -i "s#<meta name=\"lyricbridge-api-base\" content=\"\" />#<meta name=\"lyricbridge-api-base\" content=\"${PROD_URL}\" />#" web/app.html
+          echo "after inject:"; grep lyricbridge-api-base web/app.html
+          grep -q "content=\"${PROD_URL}\"" web/app.html || { echo "meta injection failed"; exit 1; }
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: web }
