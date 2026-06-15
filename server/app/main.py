@@ -114,6 +114,38 @@ def _allowed_render_fonts() -> set[str]:
     return {"Sarabun", "Noto Sans Thai"} | extra
 
 
+# O1: cap the decoded background image so a render body can't blow up memory.
+MAX_BG_IMAGE_MB = int(os.getenv("MAX_BG_IMAGE_MB", "8"))
+
+
+def _stage_background_image(b64: str, tmpdir: str | Path) -> Path:
+    """Decode a base64 (optionally data-URL) background image into `tmpdir` and
+    return its path. Raises ValueError (-> 400) on junk/oversize; content is
+    validated by render.is_valid_background_image downstream (ffprobe)."""
+    import base64
+
+    if not isinstance(b64, str):
+        raise ValueError("background must be a base64 string")
+    ext = ".png"
+    if b64.startswith("data:"):
+        header, _, b64 = b64.partition(",")
+        if "jpeg" in header or "jpg" in header:
+            ext = ".jpg"
+        elif "webp" in header:
+            ext = ".webp"
+    try:
+        raw = base64.b64decode(b64, validate=False)
+    except Exception as e:  # noqa: BLE001
+        raise ValueError(f"bad background image encoding: {e}") from e
+    if not raw:
+        raise ValueError("empty background image")
+    if len(raw) > MAX_BG_IMAGE_MB * 1024 * 1024:
+        raise ValueError(f"background image exceeds {MAX_BG_IMAGE_MB} MB")
+    dest = Path(tmpdir) / f"bg{ext}"
+    dest.write_bytes(raw)
+    return dest
+
+
 def _err(status: int, message: str, stage: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": message, "stage": stage})
 
@@ -939,11 +971,21 @@ def render_from_job(job_id: str, payload: dict = Body(...)):
         return _err(500, str(e), "render")
 
     tmpdir = tempfile.mkdtemp(prefix="karaoke_rerender_")
+    # O1: optional background image (base64 in the body). Decode → stage → the
+    # render validates it (ffprobe) before ffmpeg sees it. Reject junk as 400.
+    bg_path = None
+    bg_b64 = payload.get("background")
+    if bg_b64:
+        try:
+            bg_path = _stage_background_image(bg_b64, tmpdir)
+        except ValueError as e:
+            return _cleanup_err(tmpdir, 400, str(e), "render")
     try:
         # ffmpeg may touch the GPU (NVENC) -> same lock as /render.
         with _inference_lock:
             result = render.render_video(
-                instrumental, ass_text, tmpdir, font=font_override
+                instrumental, ass_text, tmpdir, font=font_override,
+                background_image=bg_path,
             )
     except Exception as e:  # noqa: BLE001
         logger.exception("render failed")

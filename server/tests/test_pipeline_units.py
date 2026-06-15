@@ -606,6 +606,85 @@ def test_render_ffmpeg_command_font_override(tmp_path):
     assert vf.endswith("force_style=FontName=Sarabun")
 
 
+def test_render_ffmpeg_command_background_image(tmp_path):
+    # O1: a background image swaps the lavfi colour for a looped, scaled+cropped
+    # still under the burned subtitles.
+    from app import render
+
+    img = tmp_path / "bg.jpg"
+    cmd = render.ffmpeg_command(
+        tmp_path / "a.wav", tmp_path / "s.ass", tmp_path / "o.mp4", background_image=img
+    )
+    assert "-loop" in cmd and cmd[cmd.index("-loop") + 1] == "1"
+    assert str(img) in cmd                          # image is an input
+    assert not any(a.startswith("color=") for a in cmd)  # no solid bg
+    vf = cmd[cmd.index("-vf") + 1]
+    assert vf.startswith(f"scale={render.RENDER_WIDTH}:{render.RENDER_HEIGHT}")
+    assert "crop=" in vf and "subtitles=" in vf     # cover-crop then burn subs
+    assert "-shortest" in cmd                        # audio length governs
+
+
+def test_is_valid_background_image_rejects_bad_extension(tmp_path):
+    # O1: extension pre-filter rejects non-image suffixes WITHOUT calling ffprobe.
+    from app import render
+
+    bad = tmp_path / "evil.txt"
+    bad.write_bytes(b"not an image")
+    assert render.is_valid_background_image(bad) is False
+    assert render.is_valid_background_image(tmp_path / "missing.png") is False  # ffprobe fails -> False
+
+
+def test_is_valid_background_image_accepts_probed_image(tmp_path, monkeypatch):
+    # O1: a .png whose ffprobe reports a real image codec is accepted.
+    from app import render
+
+    img = tmp_path / "ok.png"
+    img.write_bytes(b"\x89PNG\r\n\x1a\n")  # header only; ffprobe is mocked
+    monkeypatch.setattr(
+        render.subprocess, "run",
+        lambda *a, **k: type("R", (), {
+            "stdout": '{"streams":[{"codec_name":"png","width":1280,"height":720}]}'})(),
+    )
+    assert render.is_valid_background_image(img) is True
+
+
+def test_is_valid_background_image_rejects_decompression_bomb(tmp_path, monkeypatch):
+    # O1 security: a tiny file declaring huge dimensions (decompression bomb) is
+    # rejected on the declared width/height BEFORE ffmpeg allocates for it.
+    from app import render
+
+    img = tmp_path / "bomb.png"
+    img.write_bytes(b"\x89PNG\r\n\x1a\n")
+    monkeypatch.setattr(
+        render.subprocess, "run",
+        lambda *a, **k: type("R", (), {
+            "stdout": '{"streams":[{"codec_name":"png","width":50000,"height":50000}]}'})(),
+    )
+    assert render.is_valid_background_image(img) is False
+    # exactly at the cap is allowed; one over is not
+    monkeypatch.setattr(render, "MAX_BG_IMAGE_DIM", 4096)
+    for dims, ok in (((4096, 4096), True), ((4097, 100), False), ((100, 4097), False)):
+        monkeypatch.setattr(
+            render.subprocess, "run",
+            lambda *a, _d=dims, **k: type("R", (), {
+                "stdout": f'{{"streams":[{{"codec_name":"png","width":{_d[0]},"height":{_d[1]}}}]}}'})(),
+        )
+        assert render.is_valid_background_image(img) is ok
+
+
+def test_render_video_rejects_invalid_background(tmp_path, monkeypatch):
+    # O1: render_video refuses an invalid background before spending ffmpeg.
+    import pytest
+
+    from app import render
+
+    (tmp_path / "a.m4a").write_bytes(b"x")
+    monkeypatch.setattr(render, "is_valid_background_image", lambda p: False)
+    with pytest.raises(RuntimeError, match="invalid background image"):
+        render.render_video(tmp_path / "a.m4a", "[Events]", tmp_path,
+                            background_image=tmp_path / "bg.png")
+
+
 def test_lrc_and_ass_build():
     line_words = [Word(text="ฉัน", start=1.0, end=1.5), Word(text="คิด", start=1.5, end=2.0)]
     lines = to_lines([*line_words], [line_words])

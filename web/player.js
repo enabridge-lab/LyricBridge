@@ -158,6 +158,20 @@ export function serializeLines(lines) {
     .map((ln) => ln.words.map((w) => ({ text: w.text, start: w.start, end: w.end })));
 }
 
+// O1: client-side guard for the background image before we read/send it —
+// allowed type + size cap (matches the server's MAX_BG_IMAGE_MB default). Pure;
+// `file` is any {type, size}. Returns {ok, why}.
+export function checkBackgroundImage(file, maxMB = 8) {
+  if (!file) return { ok: false, why: "no file" };
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type || "")) {
+    return { ok: false, why: "ต้องเป็นรูป PNG/JPEG/WEBP · must be a PNG/JPEG/WEBP image" };
+  }
+  if (file.size > maxMB * 1024 * 1024) {
+    return { ok: false, why: `รูปใหญ่เกิน ${maxMB} MB · image exceeds ${maxMB} MB` };
+  }
+  return { ok: true, why: "" };
+}
+
 // E1: normalize text typed into a contentEditable word — collapse the stray
 // whitespace/newlines a contentEditable can introduce, and trim. Pure.
 export function cleanWordText(raw) {
@@ -428,12 +442,14 @@ function init() {
     romanToggle: $("romanToggle"),
     exportLrc: $("exportLrc"),
     exportJson: $("exportJson"),
+    copyLrc: $("copyLrc"),         // O2: copy lyrics+timing (no server share)
     renderVideo: $("renderVideo"),
     // F8: video style controls
     renderStylePanel: $("renderStylePanel"),
     styleFont: $("styleFont"), styleSize: $("styleSize"),
     stylePrimary: $("stylePrimary"), styleHighlight: $("styleHighlight"),
     stylePosition: $("stylePosition"),
+    bgImage: $("bgImage"), bgClear: $("bgClear"),  // O1: render background image
     apiBase: $("apiBase"),
     vocalFile: $("vocalFile"),
     // friendly-UI extras (optional; guarded so headless/old markup still works)
@@ -872,6 +888,34 @@ function init() {
     }
   } catch { /* corrupt saved style -> defaults */ }
 
+  // O1: the chosen background image as a base64 data URL (sent in the render body).
+  let bgImageDataUrl = null;
+  els.bgImage?.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) { bgImageDataUrl = null; if (els.bgClear) els.bgClear.hidden = true; return; }
+    const chk = checkBackgroundImage(file);
+    if (!chk.ok) {
+      bgImageDataUrl = null;
+      els.bgImage.value = "";
+      setStatus("รูปพื้นหลังใช้ไม่ได้ · " + chk.why, "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      bgImageDataUrl = reader.result; // "data:image/...;base64,...."
+      if (els.bgClear) els.bgClear.hidden = false;
+      setStatus("ตั้งภาพพื้นหลังแล้ว · Background image set", "ok");
+    };
+    reader.onerror = () => setStatus("อ่านรูปไม่สำเร็จ · Couldn't read the image", "error");
+    reader.readAsDataURL(file);
+  });
+  els.bgClear?.addEventListener("click", () => {
+    bgImageDataUrl = null;
+    if (els.bgImage) els.bgImage.value = "";
+    els.bgClear.hidden = true;
+    setStatus("ล้างภาพพื้นหลังแล้ว · Background cleared", "ok");
+  });
+
   // F2: burn the (possibly edited) lyrics over the parked instrumental.
   els.renderVideo?.addEventListener("click", async () => {
     if (!renderJobId || !model.lines.length) return;
@@ -880,8 +924,10 @@ function init() {
     try {
       const style = currentRenderStyle(); // F8
       localStorage.setItem("renderStyle", JSON.stringify(style));
+      // O1: background is spread into the same JSON body (server reads `background`).
+      const body = bgImageDataUrl ? { ...style, background: bgImageDataUrl } : style;
       const blob = await renderVideoViaServer(
-        renderJobId, serializeLines(model.lines), renderApiBase, fetch, style
+        renderJobId, serializeLines(model.lines), renderApiBase, fetch, body
       );
       download("karaoke.mp4", blob);
       setStatus("ได้วิดีโอแล้ว! · Video downloaded — karaoke.mp4", "ok");
@@ -889,6 +935,22 @@ function init() {
       setStatus("สร้างวิดีโอไม่สำเร็จ · Render failed — " + err.message, "error");
     } finally {
       els.renderVideo.disabled = false;
+    }
+  });
+
+  // O2: copy lyrics+timing (LRC) to the clipboard. Deliberately client-side — we
+  // do NOT host a public share link, since the rendered video/instrumental carry
+  // the copyrighted track; copying text keeps the user in control of sharing.
+  els.copyLrc?.addEventListener("click", async () => {
+    if (!model.lines.length) return;
+    const lrc = serializeLrc(model.lines);
+    try {
+      await navigator.clipboard.writeText(lrc);
+      setStatus("คัดลอกเนื้อแล้ว (LRC) · Lyrics copied to clipboard", "ok");
+    } catch {
+      // Clipboard API blocked (insecure context / permission) → offer a download.
+      download("lyrics.lrc", lrc, "text/plain");
+      setStatus("คัดลอกไม่ได้ — ดาวน์โหลดแทน · Copy blocked; downloaded the .lrc instead", "busy");
     }
   });
 

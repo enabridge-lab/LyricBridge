@@ -251,7 +251,8 @@ def process_song(song_bytes: bytes, lang: str, job_id: str, filename: str) -> di
 
 
 @app.function(image=image, cpu=2.0, memory=4096, timeout=600)
-def render_job(instrumental_bytes: bytes, ass_text: str, font: str | None) -> bytes:
+def render_job(instrumental_bytes: bytes, ass_text: str, font: str | None,
+               background_bytes: bytes | None = None) -> bytes:
     """F2 edit-loop render: parked instrumental m4a + edited ASS → mp4 BYTES.
 
     Runs on CPU (libx264 via render._resolve_vcodec — no nvenc in this image), in
@@ -259,6 +260,9 @@ def render_job(instrumental_bytes: bytes, ass_text: str, font: str | None) -> by
     container's polls/healthz. No GPU = no VRAM contention with process_song, so
     the "never Demucs+Whisper co-resident" invariant is untouched. Reuses
     render.render_video — no burn code copied here. Temp dir always deleted.
+
+    O1: optional background_bytes (a still image) become the video base; the
+    render validates them (ffprobe) before ffmpeg sees them.
     """
     import shutil
     import tempfile
@@ -270,7 +274,19 @@ def render_job(instrumental_bytes: bytes, ass_text: str, font: str | None) -> by
     try:
         audio = tmp / "instrumental.m4a"
         audio.write_bytes(instrumental_bytes)
-        result = render.render_video(audio, ass_text, tmp, font=font)  # CPU libx264
+        bg_path = None
+        if background_bytes:
+            # Pick an extension from magic bytes so render's extension+ffprobe
+            # validation can run (content is the real check; junk → ffprobe rejects).
+            b = background_bytes
+            ext = (".jpg" if b[:3] == b"\xff\xd8\xff"
+                   else ".png" if b[:8] == b"\x89PNG\r\n\x1a\n"
+                   else ".webp" if b[:4] == b"RIFF" and b[8:12] == b"WEBP"
+                   else ".png")
+            bg_path = tmp / f"bg{ext}"
+            bg_path.write_bytes(b)
+        result = render.render_video(audio, ass_text, tmp, font=font,
+                                     background_image=bg_path)  # CPU libx264
         return Path(result.video_path).read_bytes()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)   # never persist user audio
@@ -524,10 +540,30 @@ def web():
             ass_text = to_ass(to_lines(flat, groups), style)
         except Exception as e:
             return err(500, f"ass build failed: {e}", "render")
+
+        # O1: optional background image (base64, optionally data-URL) → bytes.
+        # render_job sniffs the type + the render validates via ffprobe.
+        bg_bytes = None
+        raw_bg = payload.get("background")
+        if raw_bg:
+            import base64
+            if not isinstance(raw_bg, str):
+                return err(400, "background must be a base64 string", "render")
+            if raw_bg.startswith("data:"):
+                raw_bg = raw_bg.partition(",")[2]
+            try:
+                bg_bytes = base64.b64decode(raw_bg, validate=False)
+            except Exception as e:  # noqa: BLE001
+                return err(400, f"bad background image encoding: {e}", "render")
+            max_bg = int(cfg("MAX_BG_IMAGE_MB", "8")) * 1024 * 1024
+            if not bg_bytes:
+                return err(400, "empty background image", "render")
+            if len(bg_bytes) > max_bg:
+                return err(400, f"background image exceeds {max_bg // (1024*1024)} MB", "render")
         try:
             # .remote() blocks this (threadpool) request until the mp4 is ready,
             # without occupying the web event loop. render_job is its own container.
-            mp4 = render_job.remote(data, ass_text, font_override)
+            mp4 = render_job.remote(data, ass_text, font_override, bg_bytes)
         except Exception as e:
             return err(500, f"render failed: {e}", "render")
         return Response(content=mp4, media_type="video/mp4",
