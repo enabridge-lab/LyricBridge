@@ -29,6 +29,7 @@ import {
   loadJobRef,
   clearJobRef,
   defaultApiBase,
+  cleanWordText,
 } from "./player.js";
 
 // D4: backend URL resolution — meta override for hosted build, localhost for self-host.
@@ -509,4 +510,14 @@ test("buildModel assigns a contiguous flat index across all line words", () => {
   assert.equal(m.lines.length, 2);
   assert.equal(m.lines[0].words[0]._i, 0);
   assert.equal(m.lines[1].words[0]._i, 1);
+});
+
+// ── Phase E1: inline-edit text sanitizer ───────────────────────────────────
+test("cleanWordText collapses contentEditable whitespace and trims", () => {
+  assert.equal(cleanWordText("  ฉัน  "), "ฉัน");
+  assert.equal(cleanWordText("ฉัน\nรัก"), "ฉัน รัก");     // stray newline -> single space
+  assert.equal(cleanWordText("a  b"), "a  b".replace(/\s+/g, " ")); // nbsp+space
+  assert.equal(cleanWordText(""), "");
+  assert.equal(cleanWordText(null), "");
+  assert.equal(cleanWordText(undefined), "");
 });
