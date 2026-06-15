@@ -1,0 +1,104 @@
+name: deploy
+
+# P1 CI/CD for the LyricBridge Modal deploy. Two delivery paths, gated by tests:
+#   backend  → `modal deploy` (default env; see note) + smoke-checks the live sha
+#   frontend → GitHub Pages (static web/, with the Modal URL injected into the meta)
+#
+# OWNER PREREQUISITES (one-time, cannot be automated):
+#   1. Create a CI Modal token: `modal token new` → add MODAL_TOKEN_ID and
+#      MODAL_TOKEN_SECRET as GitHub Actions secrets (Settings → Secrets → Actions).
+#   2. Settings → Pages → Source = "GitHub Actions".
+#
+# NOTE on environments: we deploy to the DEFAULT Modal env (no --env prod). Only one
+# env can own the canonical empty-suffix URL (chkrap47--lyricbridge-web.modal.run),
+# and `modal serve` apps are ephemeral so they can't clobber this deploy. Opt into a
+# separate prod env later only if you also reconfigure the env web suffixes.
+
+on:
+  push:
+    branches: [main]
+    paths: ["server/**", "deploy/**", "web/**", ".github/workflows/deploy.yml"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  # Backend URL (smoke check + frontend meta inject). Set as a repo VARIABLE
+  # (Settings → Secrets and variables → Actions → Variables), not a secret —
+  # it's a public URL. Falls back to the known prod URL if the variable is unset.
+  PROD_URL: ${{ vars.PROD_URL || 'https://chkrap47--lyricbridge-web.modal.run' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      # Heavy (torch + whisperx + audio-separator) but tests mock all model loads,
+      # so no weights/GPU/network are needed at test time. pytest is a dev-only dep.
+      - run: pip install -r server/requirements.txt pytest
+      - run: pytest server/ -q          # 91 mocked tests
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: cd web && node --test       # player.test.mjs (37 tests)
+
+  deploy-backend:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install modal
+      - name: Deploy backend
+        run: PYTHONPATH=server modal deploy deploy/modal_app.py
+      - name: Stamp live commit sha (read by /healthz via the control Dict)
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: PYTHONPATH=server modal run deploy/modal_app.py::set_control --key GIT_SHA --value "$GIT_SHA"
+
+  smoke-prod:
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: healthz reports the deployed sha
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          for i in $(seq 1 10); do
+            sha=$(curl -fsS "$PROD_URL/healthz" | jq -r .git_sha || echo "")
+            echo "try $i: deployed=$sha expected=$GIT_SHA"
+            [ "$sha" = "$GIT_SHA" ] && { echo "smoke OK"; exit 0; }
+            sleep 6
+          done
+          echo "MISMATCH: /healthz never reported the deployed sha"; exit 1
+
+  deploy-frontend:
+    # Gate on smoke-prod (not just test): publishing the static site points users
+    # at the backend, so don't ship the frontend if the backend deploy or its
+    # live /healthz smoke failed — that would leave the page aimed at a broken API.
+    needs: smoke-prod
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inject the Modal backend URL into the api-base meta
+        run: |
+          sed -i "s#<meta name=\"lyricbridge-api-base\" content=\"\" />#<meta name=\"lyricbridge-api-base\" content=\"${PROD_URL}\" />#" web/index.html
+          echo "after inject:"; grep lyricbridge-api-base web/index.html
+          grep -q "content=\"${PROD_URL}\"" web/index.html || { echo "meta injection failed"; exit 1; }
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: web }
+      - uses: actions/deploy-pages@v4

@@ -15,9 +15,9 @@ This file explains **what the script actually does** and how to debug it.
 
 ## Why the API runs on the host (not in Docker)
 
-The shipped Docker API image is **CPU-only** (torch-CPU, ~190 MB — see
-[`M0_HANDOFF.md`](M0_HANDOFF.md)). The only way to reach the GTX 1650 on this box
-is a native process with CUDA torch in `server/.venv`. So the script splits the stack:
+The shipped Docker API image is **CPU-only** (torch-CPU, ~190 MB). The only way to
+reach the GTX 1650 on this box is a native process with CUDA torch in
+`server/.venv`. So the script splits the stack:
 
 | Component | Runs as | Port | Device |
 |-----------|---------|------|--------|
@@ -63,7 +63,7 @@ Both APIs want port 8000, so the script makes sure only one owns it at a time.
 
 > **VRAM discipline (PRD §5.1):** stages still run **sequentially** with models freed
 > between them — the 4 GB card cannot hold separation + Whisper at once. A CUDA OOM in
-> any stage auto-retries that stage on CPU. See [`PERFORMANCE_TUNING.md`](PERFORMANCE_TUNING.md).
+> any stage auto-retries that stage on CPU. See [`PIPELINE.md`](PIPELINE.md) for stage details.
 
 ---
 
@@ -125,4 +125,4 @@ docker compose stop web         # web UI container (:8080)
 ## See also
 - [`START_HERE.md`](../START_HERE.md) — minimal quickstart
 - [`RUN_IT_YOURSELF.md`](RUN_IT_YOURSELF.md) — full self-host / env-var reference
-- [`PERFORMANCE_TUNING.md`](PERFORMANCE_TUNING.md) — VRAM, NVENC, OOM fallback
+- [`PIPELINE.md`](PIPELINE.md) — full pipeline, VRAM discipline, OOM fallback

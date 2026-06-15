@@ -83,6 +83,10 @@ build order M0 → M1 → M2 → M3 → M4.
 
 ## สถานะปัจจุบัน
 
+- **F1–F8 implement เสร็จแล้ว** (commit `17211b4`):
+  stem encode m4a (F1), edit→re-render `/render/<job_id>` (F2), confidence hint (F3),
+  async queue `/jobs/*` (F4), sync badge (F5), interpolated flag (F6), romanization (F7),
+  ASS style customizer (F8) — รายละเอียด behavior อยู่ในหัวข้อ Endpoints ข้างบน.
 - M0 + separation + one-upload `/karaoke` + sync improvements + perf tuning **สร้างเสร็จ, 50 tests ผ่าน**.
 - default แยกเสียงเปลี่ยนเป็น `htdemucs.yaml` แล้ว (เจ้าของอนุมัติ, 4x เร็วขึ้นบน CPU).
   หมายเหตุ: M0 eval เดิมใช้ `htdemucs_ft.yaml`.
@@ -95,8 +99,32 @@ build order M0 → M1 → M2 → M3 → M4.
   ถ้าจะมีโหมด GPU-only จริง ๆ ในอนาคต ให้เพิ่ม env `ALIGN_STRICT=1` แยก ไม่ overload `ALIGN_DEVICE=cuda`.
 - มี bilingual `docs/PIPELINE.md` (อังกฤษ + ไทย) อธิบาย pipeline ทั้งหมดเขียนไว้แล้ว.
 
+## แผน Deploy production (Modal) — track ใหม่
+
+มีแผน E2E ครบแล้วใน **`docs/MODAL_DEPLOYMENT.md`** + ปฏิบัติการ/rollback ใน
+**`docs/RUNBOOK.md`**. สรุปสั้น:
+
+- เป้าหมาย: hosted demo/production สาธารณะบน **Modal** (serverless GPU, scale to zero,
+  เครดิตฟรี $30/เดือน ≈ 450-500 เพลง) + frontend static บน Cloudflare/GitHub Pages (ฟรี).
+- GPU ที่พอ = **T4** (`gpu=["T4","L4","any"]`, `max_containers=1`, `timeout=900`).
+- **Design ถูกบังคับโดยข้อจำกัด Modal**: HTTP จำกัด 150 วิ + กลไกต่ออายุใช้กับ CORS
+  ไม่ได้ → ต้องใช้ **spawn + poll** (web endpoint CPU spawn GPU function); web/GPU
+  ไม่แชร์ดิสก์ → stems ส่งผ่าน `modal.Dict` (F1 m4a ทำให้ของเล็กพอแล้ว ✅).
+  **API shape ของ web app บน Modal ให้ตรงกับ F4 (`/jobs/*`)** — client โค้ดเดียวใช้สองที่.
+- โครงแผน: Part B = D0–D5 (setup → Image → Volume โมเดล → spawn+poll API →
+  frontend → guardrails) / Part C = P1–P5 (CI/CD GitHub Actions → secrets →
+  observability+canary → security/privacy → runbook+rollback). ทุกขั้นมี acceptance.
+- ⚠️ **เพลงเต็มขึ้น cloud** ใน deploy นี้ — เจ้าของอนุมัติแล้ว *เฉพาะ hosted demo*
+  (ข้อยกเว้นของ locked decision "cloud ได้แค่ vocal stem"; self-host ไม่เปลี่ยน).
+- **Blocker — รอเจ้าของ (Part A ของแผน)**: `modal setup` login / push repo ขึ้น GitHub +
+  สิทธิ์ Actions secrets / เลือก Cloudflare หรือ GitHub Pages / ตอบ 4 คำถาม
+  (โดเมน, ชื่อ public, เพดานงบ, ล็อก region ไหม) — **Claude Code ห้ามเริ่ม D0 จนกว่าจะครบ
+  และห้าม mock/เดาแทน**.
+
 ## งานที่ค้าง / ทำต่อ
 
+0. **Deploy track**: รอเจ้าของส่งมอบ Part A (ดูหัวข้อข้างบน) → แล้วเริ่ม
+   `docs/MODAL_DEPLOYMENT.md` ตามลำดับ D0 → D5 → P1 → P5.
 1. **Publish โมเดล Thai Whisper ขึ้น Hugging Face** (เช่น `champkrap/whisper-th-large-v3-ct2`),
    **pin revision (commit hash)**, ใส่เครดิต license ต้นทาง → ให้ `git clone` มาแล้วรันเหมือน
    เครื่องเจ้าของเป๊ะทั้ง GPU/CPU (faster-whisper auto-download + cache ใน `~/.cache/huggingface`).
@@ -120,3 +148,7 @@ build order M0 → M1 → M2 → M3 → M4.
 
 อ่าน `CLAUDE.md` → `PRD.md` (โดยเฉพาะ §2 locked decisions, §5 dev constraints, §6 Thai rules, §7 M0).
 M0 อยู่ใน `server/` ทั้งหมด. validate ตาม acceptance criteria (โดยเฉพาะ M0 5-song luk-thung eval) ก่อนขยาย scope.
+
+ถ้างานคือ **deploy**: อ่าน `docs/MODAL_DEPLOYMENT.md` + `docs/MODAL_RULES.md` + `docs/RUNBOOK.md`.
+ถ้างานคือ **ฟีเจอร์**: F1–F8 ทำครบแล้ว (ดู Endpoints ข้างบน) — ฟีเจอร์ใหม่ให้คุย
+กับเจ้าของก่อน (กัน scope creep ตาม CLAUDE.md).

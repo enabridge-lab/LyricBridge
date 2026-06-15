@@ -8,6 +8,15 @@
 // (see player.test.mjs). DOM wiring at the bottom is guarded so importing this
 // module in node does not touch `document`.
 
+// D4: resolve the backend URL. Order: <meta name="lyricbridge-api-base"> (set by
+// the GitHub Pages build to the Modal URL) → http://localhost:8000 (self-host
+// default). Pure + exported for node:test; guarded so it works without a DOM.
+export function defaultApiBase(doc = (typeof document !== "undefined" ? document : null)) {
+  const meta = doc && doc.querySelector('meta[name="lyricbridge-api-base"]');
+  const v = meta && meta.getAttribute("content");
+  return (v && v.trim()) || "http://localhost:8000";
+}
+
 // --- pure logic ------------------------------------------------------------
 
 // Parse LRC "[mm:ss.xx]text" rows into [{start, text}] (line-level timestamps).
@@ -366,6 +375,35 @@ function init() {
     vocalSliderRow: $("vocalSliderRow"),
   };
 
+  // D4: on a hosted build the meta carries the Modal URL — pre-fill the (still
+  // editable) server field so a visitor needs zero setup. Self-host leaves the
+  // meta empty, so this keeps the HTML's localhost default untouched.
+  const _apiDefault = defaultApiBase();
+  if (els.apiBase && _apiDefault !== "http://localhost:8000") {
+    els.apiBase.value = _apiDefault;
+  }
+
+  // D5: surface the backend's $30 kill switch. If /healthz reports
+  // accepting:false, show a banner and disable upload. Best-effort — a network
+  // error or a pre-D5 server (no `accepting` field) simply shows nothing.
+  (async () => {
+    try {
+      const base = (els.apiBase?.value || defaultApiBase()).trim().replace(/\/$/, "");
+      const res = await fetch(`${base}/healthz`);
+      if (!res.ok) return;
+      const h = await res.json();
+      if (h && h.accepting === false) {
+        const b = document.createElement("div");
+        b.id = "demoPausedBanner";
+        b.textContent = "⚠️ เดโมปิดชั่วคราว — เต็มโควต้าเดือนนี้ ลองใหม่เดือนหน้า หรือ self-host";
+        b.style.cssText =
+          "background:#b00020;color:#fff;padding:.6rem 1rem;text-align:center;font-weight:600";
+        document.body.prepend(b);
+        if (els.songFile) els.songFile.disabled = true;
+      }
+    } catch { /* offline / pre-D5 server — no banner */ }
+  })();
+
   let model = { words: [], lines: [] };
   let meta = {};
   // F2: the /karaoke job whose instrumental is still parked on the server —
@@ -499,7 +537,7 @@ function init() {
 
   async function runKaraoke(file) {
     if (!file) return;
-    const base = (els.apiBase?.value || "http://localhost:8000").trim();
+    const base = (els.apiBase?.value || defaultApiBase()).trim();
     if (els.songName) els.songName.textContent = "⏳ " + file.name;
     if (els.songFile) els.songFile.disabled = true;
 
@@ -655,7 +693,7 @@ function init() {
     els.vocalFile.addEventListener("change", async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      const base = (els.apiBase?.value || "http://localhost:8000").trim();
+      const base = (els.apiBase?.value || defaultApiBase()).trim();
       if (els.vocalName) els.vocalName.textContent = "⏳ " + file.name;
       setStatus("AI กำลังถอดเนื้อเพลง… (ครั้งแรกอาจช้าเพราะโหลดโมเดล) · Transcribing…", "busy");
       showProcessing();

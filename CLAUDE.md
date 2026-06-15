@@ -15,6 +15,10 @@ Thai lyrics are generated → play in a web player + export a karaoke video.
 M0 is the contract that validates the core risk: does auto-transcribing Thai/luk-thung actually work?
 Do not jump ahead to UI (M2) or separation (M1) before M0 produces usable LRC/ASS on the 5-song test set.
 
+**If the task is the production deploy** (Modal hosted demo): read `docs/MODAL_DEPLOYMENT.md`
+(follow D0→D5→P1→P5 in order) and `docs/MODAL_RULES.md` (how to write Modal code in this repo)
+**before touching `deploy/`**. All `modal` CLI commands run on the owner's machine, not the agent sandbox.
+
 ## Locked decisions — DO NOT change without owner sign-off
 
 (Full table in `PRD.md` §2.)

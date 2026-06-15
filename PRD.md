@@ -4,7 +4,6 @@
 > เอกสารนี้คือสเปกสำหรับลงมือ build อ่านให้จบก่อนเขียนโค้ด
 >
 > **Status:** v1.1 — **M0–M4 all implemented** (this PRD is now reconciled to the as-built code). The original build order and locked decisions are unchanged; sections below note "as built" where the implementation added detail.
-> **Source brief:** see `docs/PROJECT_BRIEF.md` (Thai handoff doc) — this PRD supersedes it for build details.
 > **As-built docs:** end-to-end walkthrough in `docs/PIPELINE.md`; reproducible clone/run in `docs/REPRODUCIBLE_CLONE.md`.
 
 ---
@@ -91,7 +90,7 @@ lyricbridge/                # (working dir is still ai-karaoke/; repo = LyricBri
 ├── web/                    # M2: static player (upload, play, word highlight) + tests
 ├── models/                 # local model cache (gitignored): whisper-th-…, audio-separator/
 ├── scripts/                # setup.sh (build venv), run_gpu.sh / stop_gpu.sh (GPU launcher)
-├── docs/                   # ARCHITECTURE, PIPELINE, REPRODUCIBLE_CLONE, RUN_*, PERFORMANCE_TUNING, …
+├── docs/                   # ARCHITECTURE, PIPELINE, REPRODUCIBLE_CLONE, RUN_*, MODAL_DEPLOYMENT, RUNBOOK, …
 ├── docker-compose.yml      # CPU self-host entrypoint (web + asr)
 ├── docker-compose.override.yml.example   # optional local/offline model wiring
 ├── CLAUDE.md               # agent operating guide (read first)

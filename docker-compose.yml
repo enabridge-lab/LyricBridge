@@ -7,17 +7,18 @@ services:
   asr:
     build: ./server
     image: lyricbridge-server:m3
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
       # Thai-tuned Whisper published to HF Hub (auto-downloaded + cached on first
       # run). Override with ASR_MODEL=large-v3 for vanilla Whisper, or a local
       # path. See docs/REPRODUCIBLE_CLONE.md for publishing your own.
-      ASR_MODEL: ${ASR_MODEL:-champkrap/whisper-th-large-v3-ct2}
+      ASR_MODEL: ${ASR_MODEL:-Avocaduu14/whisper-th-large-v3-ct2}
       # Pin to an exact commit hash for output that stays identical over time.
       # Empty = latest (works, but a future model update would change results).
       # Paste the hash from the model's HF "Files and versions" page here.
-      ASR_MODEL_REVISION: ${ASR_MODEL_REVISION:-}
+      ASR_MODEL_REVISION: ${ASR_MODEL_REVISION:-1a1554ea606d89c937216ada609bb8585e20a36e}
       ASR_DEVICE: cpu
       # WhisperX has no default Thai align model -> supply a Thai wav2vec2.
       ALIGN_MODEL: ${ALIGN_MODEL:-airesearch/wav2vec2-large-xlsr-53-th}
@@ -40,6 +41,7 @@ services:
 
   web:
     image: nginx:alpine
+    restart: unless-stopped
     ports:
       - "8080:80"
     volumes:

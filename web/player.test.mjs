@@ -28,7 +28,22 @@ import {
   saveJobRef,
   loadJobRef,
   clearJobRef,
+  defaultApiBase,
 } from "./player.js";
+
+// D4: backend URL resolution — meta override for hosted build, localhost for self-host.
+test("defaultApiBase falls back to localhost when no/empty meta", () => {
+  assert.equal(defaultApiBase(null), "http://localhost:8000");
+  const emptyDoc = { querySelector: () => ({ getAttribute: () => "" }) };
+  assert.equal(defaultApiBase(emptyDoc), "http://localhost:8000");
+  const missingDoc = { querySelector: () => null };
+  assert.equal(defaultApiBase(missingDoc), "http://localhost:8000");
+});
+
+test("defaultApiBase uses the meta content (trimmed) when set", () => {
+  const doc = { querySelector: () => ({ getAttribute: () => "  https://x--lyricbridge-web.modal.run  " }) };
+  assert.equal(defaultApiBase(doc), "https://x--lyricbridge-web.modal.run");
+});
 
 // Map-backed stand-in for localStorage (node has no DOM storage).
 function fakeStorage() {
