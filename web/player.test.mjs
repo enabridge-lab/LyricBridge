@@ -364,8 +364,14 @@ test("syncQuality grades payloads across all branches and thresholds", () => {
 test("syncQuality grades a real eval payload from out_vocals_fixed", async () => {
   const { readFile, readdir } = await import("node:fs/promises");
   const dir = new URL("../server/tests/out_vocals_fixed/", import.meta.url);
-  const jsons = (await readdir(dir)).filter((f) => f.endsWith(".json"));
-  if (!jsons.length) return; // eval outputs not present in this checkout
+  let jsons;
+  try {
+    jsons = (await readdir(dir)).filter((f) => f.endsWith(".json"));
+  } catch (e) {
+    if (e.code === "ENOENT") return; // eval outputs dir absent in this checkout (e.g. CI)
+    throw e;
+  }
+  if (!jsons.length) return; // eval outputs present but empty
   const payload = JSON.parse(await readFile(new URL(jsons[0], dir), "utf8"));
   const quality = syncQuality(payload);
   assert.ok(quality === null || ["good", "partial", "rough"].includes(quality.level));
