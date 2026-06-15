@@ -10,7 +10,9 @@
   --panel2: #faf4fe;
   --line:   #ece0f4;   /* soft lavender border */
   --text:   #4b4364;   /* deep muted purple-slate, readable on light */
-  --dim:    #9d92b3;   /* muted lavender-grey */
+  --dim:    #6f6788;   /* muted lavender-grey — darkened to meet WCAG AA 4.5:1 on
+                          white/near-white (was #9d92b3 ≈ 2.91:1; .en text is real
+                          bilingual content, so it must pass contrast) */
   --active: #ff5fa2;   /* vivid pastel pink — current word, pops on light */
   --accent: #9b7be3;   /* soft purple */
   --accent2:#ff9bb8;   /* pastel coral-pink */
