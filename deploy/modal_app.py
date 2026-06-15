@@ -154,6 +154,9 @@ gauges = modal.Dict.from_name("lyricbridge-gauges", create_if_missing=True)
 control = modal.Dict.from_name("lyricbridge-control", create_if_missing=True)
 # P3 observability: per-UTC-day counters for /metrics-lite.
 metrics = modal.Dict.from_name("lyricbridge-metrics", create_if_missing=True)
+# Phase A: per-user monthly quota counters, keyed `quota:{google_sub}:{YYYY-MM}`
+# (auth.monthly_quota_key). Not durable across redeploys — owner-accepted.
+quota = modal.Dict.from_name("lyricbridge-quota", create_if_missing=True)
 
 
 def _bump_metric(field):
@@ -309,6 +312,8 @@ def web():
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
 
+    from app import auth  # Phase A: Google ID-token verify + quota helpers (reused)
+
     logger = logging.getLogger("lyricbridge")
     api = FastAPI(title="LyricBridge (Modal)")
     # CORS is process-static (changing it is a real redeploy concern, not a knob).
@@ -393,19 +398,51 @@ def web():
         # `accepting` drives the frontend "demo paused" banner (player.js).
         # git_sha comes from the control Dict (P1 deploy writes it via set_control
         # → live, no warm-container staleness) so CI's smoke can verify the sha.
+        # Phase A: `auth_required` lets the frontend show the Google button +
+        # gate "create" only when the backend actually enforces login (i.e. a
+        # GOOGLE_CLIENT_ID is configured). The id is public (it's in the JWT aud).
+        gid = (cfg("GOOGLE_CLIENT_ID", "") or "").strip()
         return {"status": "ok", "git_sha": cfg("GIT_SHA", "unknown"),
-                "accepting": accepting()}
+                "accepting": accepting(),
+                "auth_required": bool(gid),
+                "google_client_id": gid or None}
 
     @api.post("/jobs/karaoke")
     async def submit(request: Request, file: UploadFile = File(...), lang: str = Form("th")):
         if not accepting():
             return err(503, "เดโมปิดชั่วคราว — เต็มโควต้าเดือนนี้ ลองใหม่เดือนหน้า "
                             "หรือ self-host (demo paused: monthly quota reached)", "queue")
+
+        # Phase A: Google Sign-In gate. ONLY enforced when a GOOGLE_CLIENT_ID is
+        # configured — so a self-host/early deploy without it stays open (the
+        # landing, the player, and the D1 demo never reach here anyway). When set,
+        # creating a karaoke requires a valid Google ID token, and a per-user
+        # monthly quota replaces the per-IP cap as the abuse control.
+        google_client_id = (cfg("GOOGLE_CLIENT_ID", "") or "").strip()
+        user_sub = None
+        if google_client_id:
+            token = auth.bearer_token(request.headers.get("authorization"))
+            if not token:
+                return err(401, "กรุณาเข้าสู่ระบบด้วย Google ก่อนสร้างคาราโอเกะ "
+                                "(sign in with Google to create)", "auth")
+            try:
+                claims = auth.verify_google_id_token(token, google_client_id)
+                user_sub = auth.verify_claims(claims, google_client_id)
+            except auth.AuthError as e:
+                return err(401, f"เข้าสู่ระบบไม่ผ่าน · sign-in failed ({e.reason})", "auth")
+            # per-user monthly quota (replaces the per-IP rate limit when logged in)
+            monthly_limit = int(cfg("MONTHLY_QUOTA", "10"))
+            qk = auth.monthly_quota_key(user_sub)
+            qused = quota.get(qk) or 0
+            if auth.quota_exceeded(qused, monthly_limit):
+                return err(429, f"ใช้ครบโควตาเดือนนี้แล้ว ({monthly_limit} เพลง/เดือน) "
+                                f"ลองใหม่เดือนหน้า (monthly quota {monthly_limit} reached)", "queue")
+
         max_mb = int(cfg("MAX_UPLOAD_MB", "30"))
         max_sec = int(cfg("MAX_DURATION_SEC", "420"))        # 7 min
         rate_per_hour = int(cfg("RATE_LIMIT_PER_HOUR", "5"))  # jobs/IP/hour
         max_queued = int(cfg("MAX_QUEUED", "3"))             # in-flight cap
-        # per-IP hourly rate limit
+        # per-IP hourly rate limit (always on — a cheap backstop even when logged in)
         hour = int(time.time() // 3600)
         rk = f"{client_ip(request)}:{hour}"
         used = ratelimit.get(rk) or 0
@@ -429,6 +466,10 @@ def web():
         call = process_song.spawn(data, lang, job_id, file.filename or "song")
         calls.put(job_id, call.object_id)
         ratelimit.put(rk, used + 1)
+        # Phase A: count this job against the signed-in user's monthly quota.
+        if user_sub is not None:
+            qk = auth.monthly_quota_key(user_sub)
+            quota.put(qk, (quota.get(qk) or 0) + 1)
         gauges.put("inflight", (gauges.get("inflight") or 0) + 1)
         _bump_metric("submitted")
         return JSONResponse(status_code=202,

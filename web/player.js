@@ -17,6 +17,15 @@ export function defaultApiBase(doc = (typeof document !== "undefined" ? document
   return (v && v.trim()) || "http://localhost:8000";
 }
 
+// Phase A: the configured Google OAuth client id (public — it's the JWT `aud`),
+// from the <meta> the deploy build injects. "" when unset (self-host / before the
+// owner configures OAuth) -> the player shows no sign-in button. Pure + guarded.
+export function googleClientId(doc = (typeof document !== "undefined" ? document : null)) {
+  const meta = doc && doc.querySelector('meta[name="lyricbridge-google-client-id"]');
+  const v = meta && meta.getAttribute("content");
+  return (v && v.trim()) || "";
+}
+
 // --- pure logic ------------------------------------------------------------
 
 // Parse LRC "[mm:ss.xx]text" rows into [{start, text}] (line-level timestamps).
@@ -231,13 +240,17 @@ export async function karaokeViaServer(file, apiBase, fetchImpl = fetch, progres
 // F4: submit a karaoke job to the async queue -> {job_id, status_url} (202).
 // Returns null when the server predates the queue (404 -> caller falls back to
 // the blocking /karaoke). Other failures (413/429/5xx) throw with stage/error.
-export async function submitKaraokeJob(file, apiBase, fetchImpl = fetch, lang = "th") {
+export async function submitKaraokeJob(file, apiBase, fetchImpl = fetch, lang = "th", token = null) {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("lang", lang);
+  // Phase A: attach the Google ID token so the backend can verify + meter quota.
+  // Omitted when not signed in (backend stays open if it has no GOOGLE_CLIENT_ID).
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
   const res = await fetchImpl(`${apiBase.replace(/\/$/, "")}/jobs/karaoke`, {
     method: "POST",
     body: fd,
+    ...(headers ? { headers } : {}),
   });
   if (res.status === 404) return null;
   if (!res.ok) {
@@ -476,6 +489,9 @@ function init() {
     loopState: $("loopState"),
     themeSize: $("themeSize"), themeText: $("themeText"), themeBg: $("themeBg"), // S3
     recordBtn: $("recordBtn"), recordState: $("recordState"),         // S4
+    // Phase A: Google Sign-In
+    authBar: $("authBar"), authState: $("authState"),
+    googleSignIn: $("googleSignIn"), signOutBtn: $("signOutBtn"),
   };
 
   // D4: on a hosted build the meta carries the Modal URL — pre-fill the (still
@@ -504,11 +520,75 @@ function init() {
         document.body.prepend(b);
         if (els.songFile) els.songFile.disabled = true;
       }
+      // Phase A: the backend tells us whether login is required (it is iff it has
+      // a GOOGLE_CLIENT_ID). Trust the server's answer over the local meta so the
+      // two never drift. The client id for the button comes from healthz too.
+      if (h && h.auth_required) {
+        authRequired = true;
+        initGoogleSignIn(h.google_client_id || googleClientId());
+      }
     } catch { /* offline / pre-D5 server — no banner */ }
   })();
 
+  // Phase A: render the Google button + wire the credential callback. Called only
+  // when the backend requires auth. Safe to no-op if GIS hasn't loaded or no id.
+  function initGoogleSignIn(clientId) {
+    if (!clientId || !els.authBar) return;
+    els.authBar.hidden = false;
+    const renderButton = () => {
+      if (!(window.google && google.accounts && google.accounts.id)) return false;
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (resp) => onGoogleCredential(resp && resp.credential),
+      });
+      if (els.googleSignIn) {
+        google.accounts.id.renderButton(els.googleSignIn, { theme: "outline", size: "large" });
+      }
+      return true;
+    };
+    // GIS script is async — retry briefly until window.google exists.
+    if (!renderButton()) {
+      let tries = 0;
+      const t = setInterval(() => {
+        if (renderButton() || ++tries > 40) clearInterval(t); // ~10s max
+      }, 250);
+    }
+  }
+
+  function onGoogleCredential(credential) {
+    if (!credential) return;
+    googleToken = credential;
+    if (els.googleSignIn) els.googleSignIn.style.display = "none";
+    if (els.signOutBtn) els.signOutBtn.hidden = false;
+    setAuthState("เข้าสู่ระบบแล้ว", "Signed in");
+    setStatus("เข้าสู่ระบบด้วย Google แล้ว — สร้างคาราโอเกะได้เลย · Signed in", "ok");
+  }
+
+  // Set the auth-state line as Thai text + an .en English span, via DOM (no
+  // innerHTML — keeps this file's XSS-safe textContent convention).
+  function setAuthState(th, en) {
+    if (!els.authState) return;
+    els.authState.textContent = th + " ";
+    const span = document.createElement("span");
+    span.className = "en";
+    span.textContent = en;
+    els.authState.appendChild(span);
+  }
+
+  els.signOutBtn?.addEventListener("click", () => {
+    googleToken = null;
+    try { window.google?.accounts?.id?.disableAutoSelect?.(); } catch { /* ignore */ }
+    if (els.googleSignIn) els.googleSignIn.style.display = "";
+    if (els.signOutBtn) els.signOutBtn.hidden = true;
+    setAuthState("เข้าสู่ระบบเพื่อสร้างคาราโอเกะ", "Sign in to create karaoke");
+  });
+
   let model = { words: [], lines: [] };
   let meta = {};
+  // Phase A: Google ID token held in memory ONLY (never localStorage — it's a
+  // short-lived credential). authRequired mirrors the backend's /healthz.
+  let googleToken = null;
+  let authRequired = false;
   // F2: the /karaoke job whose instrumental is still parked on the server —
   // lets the render button POST /render/{job_id} without re-uploading audio.
   let renderJobId = null;
@@ -651,6 +731,14 @@ function init() {
 
   async function runKaraoke(file) {
     if (!file) return;
+    // Phase A: gate creation on Google sign-in when the backend requires it.
+    // (Viewing the player + the D1 demo never reach here, so they need no login.)
+    if (authRequired && !googleToken) {
+      setStatus("กรุณาเข้าสู่ระบบด้วย Google ก่อนสร้างคาราโอเกะ · Please sign in with Google first", "error");
+      els.authBar?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (els.songFile) els.songFile.value = "";
+      return;
+    }
     const base = (els.apiBase?.value || defaultApiBase()).trim();
     if (els.songName) els.songName.textContent = "⏳ " + file.name;
     if (els.songFile) els.songFile.disabled = true;
@@ -685,7 +773,7 @@ function init() {
       // to the legacy blocking /karaoke.
       console.time("[LyricBridge] karaoke job");
       let payload;
-      const submitted = await submitKaraokeJob(file, base);
+      const submitted = await submitKaraokeJob(file, base, fetch, "th", googleToken);
       if (submitted) {
         console.log("→ queued as job", submitted.job_id);
         saveJobRef(localStorage, submitted.job_id, base);

@@ -38,6 +38,7 @@ import {
   preferredRecorderMime,
   cleanWordText,
   wantsDemo,
+  googleClientId,
 } from "./player.js";
 
 // D4: backend URL resolution — meta override for hosted build, localhost for self-host.
@@ -611,4 +612,29 @@ test("wantsDemo is true only for demo=1 and never throws on junk", () => {
   assert.equal(wantsDemo(""), false);
   assert.equal(wantsDemo(), false);                 // default arg
   assert.equal(wantsDemo("%%%not-a-query%%%"), false);
+});
+
+// ── Phase A: Google Sign-In helpers ────────────────────────────────────────
+test("googleClientId reads the meta, trims, and defaults to empty", () => {
+  assert.equal(googleClientId(null), "");
+  const none = { querySelector: () => null };
+  assert.equal(googleClientId(none), "");
+  const empty = { querySelector: () => ({ getAttribute: () => "  " }) };
+  assert.equal(googleClientId(empty), "");
+  const set = { querySelector: () => ({ getAttribute: () => "  123.apps.googleusercontent.com  " }) };
+  assert.equal(googleClientId(set), "123.apps.googleusercontent.com");
+});
+
+test("submitKaraokeJob attaches Authorization: Bearer only when a token is given", async () => {
+  const calls = [];
+  const fakeFetch = async (url, opts) => {
+    calls.push(opts);
+    return { ok: true, status: 202, json: async () => ({ job_id: "j1" }) };
+  };
+  // signed in -> header present
+  await submitKaraokeJob(new Blob(["x"]), "http://h/", fakeFetch, "th", "tok.123");
+  assert.equal(calls[0].headers.Authorization, "Bearer tok.123");
+  // not signed in -> no Authorization header at all (backend may be open)
+  await submitKaraokeJob(new Blob(["x"]), "http://h/", fakeFetch, "th", null);
+  assert.equal(calls[1].headers, undefined);
 });
