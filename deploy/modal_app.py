@@ -154,6 +154,9 @@ gauges = modal.Dict.from_name("lyricbridge-gauges", create_if_missing=True)
 control = modal.Dict.from_name("lyricbridge-control", create_if_missing=True)
 # P3 observability: per-UTC-day counters for /metrics-lite.
 metrics = modal.Dict.from_name("lyricbridge-metrics", create_if_missing=True)
+# Phase A: per-user monthly quota counters, keyed `quota:{google_sub}:{YYYY-MM}`
+# (auth.monthly_quota_key). Not durable across redeploys — owner-accepted.
+quota = modal.Dict.from_name("lyricbridge-quota", create_if_missing=True)
 
 
 def _bump_metric(field):
@@ -251,7 +254,8 @@ def process_song(song_bytes: bytes, lang: str, job_id: str, filename: str) -> di
 
 
 @app.function(image=image, cpu=2.0, memory=4096, timeout=600)
-def render_job(instrumental_bytes: bytes, ass_text: str, font: str | None) -> bytes:
+def render_job(instrumental_bytes: bytes, ass_text: str, font: str | None,
+               background_bytes: bytes | None = None) -> bytes:
     """F2 edit-loop render: parked instrumental m4a + edited ASS → mp4 BYTES.
 
     Runs on CPU (libx264 via render._resolve_vcodec — no nvenc in this image), in
@@ -259,6 +263,9 @@ def render_job(instrumental_bytes: bytes, ass_text: str, font: str | None) -> by
     container's polls/healthz. No GPU = no VRAM contention with process_song, so
     the "never Demucs+Whisper co-resident" invariant is untouched. Reuses
     render.render_video — no burn code copied here. Temp dir always deleted.
+
+    O1: optional background_bytes (a still image) become the video base; the
+    render validates them (ffprobe) before ffmpeg sees them.
     """
     import shutil
     import tempfile
@@ -270,7 +277,19 @@ def render_job(instrumental_bytes: bytes, ass_text: str, font: str | None) -> by
     try:
         audio = tmp / "instrumental.m4a"
         audio.write_bytes(instrumental_bytes)
-        result = render.render_video(audio, ass_text, tmp, font=font)  # CPU libx264
+        bg_path = None
+        if background_bytes:
+            # Pick an extension from magic bytes so render's extension+ffprobe
+            # validation can run (content is the real check; junk → ffprobe rejects).
+            b = background_bytes
+            ext = (".jpg" if b[:3] == b"\xff\xd8\xff"
+                   else ".png" if b[:8] == b"\x89PNG\r\n\x1a\n"
+                   else ".webp" if b[:4] == b"RIFF" and b[8:12] == b"WEBP"
+                   else ".png")
+            bg_path = tmp / f"bg{ext}"
+            bg_path.write_bytes(b)
+        result = render.render_video(audio, ass_text, tmp, font=font,
+                                     background_image=bg_path)  # CPU libx264
         return Path(result.video_path).read_bytes()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)   # never persist user audio
@@ -292,6 +311,8 @@ def web():
     from fastapi import Body, FastAPI, File, Form, Request, UploadFile
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
+
+    from app import auth  # Phase A: Google ID-token verify + quota helpers (reused)
 
     logger = logging.getLogger("lyricbridge")
     api = FastAPI(title="LyricBridge (Modal)")
@@ -377,19 +398,51 @@ def web():
         # `accepting` drives the frontend "demo paused" banner (player.js).
         # git_sha comes from the control Dict (P1 deploy writes it via set_control
         # → live, no warm-container staleness) so CI's smoke can verify the sha.
+        # Phase A: `auth_required` lets the frontend show the Google button +
+        # gate "create" only when the backend actually enforces login (i.e. a
+        # GOOGLE_CLIENT_ID is configured). The id is public (it's in the JWT aud).
+        gid = (cfg("GOOGLE_CLIENT_ID", "") or "").strip()
         return {"status": "ok", "git_sha": cfg("GIT_SHA", "unknown"),
-                "accepting": accepting()}
+                "accepting": accepting(),
+                "auth_required": bool(gid),
+                "google_client_id": gid or None}
 
     @api.post("/jobs/karaoke")
     async def submit(request: Request, file: UploadFile = File(...), lang: str = Form("th")):
         if not accepting():
             return err(503, "เดโมปิดชั่วคราว — เต็มโควต้าเดือนนี้ ลองใหม่เดือนหน้า "
                             "หรือ self-host (demo paused: monthly quota reached)", "queue")
+
+        # Phase A: Google Sign-In gate. ONLY enforced when a GOOGLE_CLIENT_ID is
+        # configured — so a self-host/early deploy without it stays open (the
+        # landing, the player, and the D1 demo never reach here anyway). When set,
+        # creating a karaoke requires a valid Google ID token, and a per-user
+        # monthly quota replaces the per-IP cap as the abuse control.
+        google_client_id = (cfg("GOOGLE_CLIENT_ID", "") or "").strip()
+        user_sub = None
+        if google_client_id:
+            token = auth.bearer_token(request.headers.get("authorization"))
+            if not token:
+                return err(401, "กรุณาเข้าสู่ระบบด้วย Google ก่อนสร้างคาราโอเกะ "
+                                "(sign in with Google to create)", "auth")
+            try:
+                claims = auth.verify_google_id_token(token, google_client_id)
+                user_sub = auth.verify_claims(claims, google_client_id)
+            except auth.AuthError as e:
+                return err(401, f"เข้าสู่ระบบไม่ผ่าน · sign-in failed ({e.reason})", "auth")
+            # per-user monthly quota (replaces the per-IP rate limit when logged in)
+            monthly_limit = int(cfg("MONTHLY_QUOTA", "10"))
+            qk = auth.monthly_quota_key(user_sub)
+            qused = quota.get(qk) or 0
+            if auth.quota_exceeded(qused, monthly_limit):
+                return err(429, f"ใช้ครบโควตาเดือนนี้แล้ว ({monthly_limit} เพลง/เดือน) "
+                                f"ลองใหม่เดือนหน้า (monthly quota {monthly_limit} reached)", "queue")
+
         max_mb = int(cfg("MAX_UPLOAD_MB", "30"))
         max_sec = int(cfg("MAX_DURATION_SEC", "420"))        # 7 min
         rate_per_hour = int(cfg("RATE_LIMIT_PER_HOUR", "5"))  # jobs/IP/hour
         max_queued = int(cfg("MAX_QUEUED", "3"))             # in-flight cap
-        # per-IP hourly rate limit
+        # per-IP hourly rate limit (always on — a cheap backstop even when logged in)
         hour = int(time.time() // 3600)
         rk = f"{client_ip(request)}:{hour}"
         used = ratelimit.get(rk) or 0
@@ -413,6 +466,10 @@ def web():
         call = process_song.spawn(data, lang, job_id, file.filename or "song")
         calls.put(job_id, call.object_id)
         ratelimit.put(rk, used + 1)
+        # Phase A: count this job against the signed-in user's monthly quota.
+        if user_sub is not None:
+            qk = auth.monthly_quota_key(user_sub)
+            quota.put(qk, (quota.get(qk) or 0) + 1)
         gauges.put("inflight", (gauges.get("inflight") or 0) + 1)
         _bump_metric("submitted")
         return JSONResponse(status_code=202,
@@ -524,10 +581,30 @@ def web():
             ass_text = to_ass(to_lines(flat, groups), style)
         except Exception as e:
             return err(500, f"ass build failed: {e}", "render")
+
+        # O1: optional background image (base64, optionally data-URL) → bytes.
+        # render_job sniffs the type + the render validates via ffprobe.
+        bg_bytes = None
+        raw_bg = payload.get("background")
+        if raw_bg:
+            import base64
+            if not isinstance(raw_bg, str):
+                return err(400, "background must be a base64 string", "render")
+            if raw_bg.startswith("data:"):
+                raw_bg = raw_bg.partition(",")[2]
+            try:
+                bg_bytes = base64.b64decode(raw_bg, validate=False)
+            except Exception as e:  # noqa: BLE001
+                return err(400, f"bad background image encoding: {e}", "render")
+            max_bg = int(cfg("MAX_BG_IMAGE_MB", "8")) * 1024 * 1024
+            if not bg_bytes:
+                return err(400, "empty background image", "render")
+            if len(bg_bytes) > max_bg:
+                return err(400, f"background image exceeds {max_bg // (1024*1024)} MB", "render")
         try:
             # .remote() blocks this (threadpool) request until the mp4 is ready,
             # without occupying the web event loop. render_job is its own container.
-            mp4 = render_job.remote(data, ass_text, font_override)
+            mp4 = render_job.remote(data, ass_text, font_override, bg_bytes)
         except Exception as e:
             return err(500, f"render failed: {e}", "render")
         return Response(content=mp4, media_type="video/mp4",

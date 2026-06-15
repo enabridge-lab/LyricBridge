@@ -549,3 +549,21 @@ body.stage-mode .word.active {
   .lp-hero-title { font-size: 1.6rem; }
   .lp-hero { padding-top: 1.5rem; }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   Phase A — Google Sign-In bar (shown only when the backend requires login)
+   ════════════════════════════════════════════════════════════════ */
+.authbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .8rem;
+  margin-bottom: 1rem; padding: .8rem 1rem;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.authbar .auth-state { font-size: .92rem; }
+.authbar .auth-state .en { display: block; font-size: .78rem; }
+.authbar #signOutBtn {
+  font: inherit; padding: .4rem .7rem; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel2);
+  color: var(--text); cursor: pointer;
+}
+.authbar #signOutBtn:hover { border-color: var(--accent); }

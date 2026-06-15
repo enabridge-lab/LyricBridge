@@ -9,6 +9,12 @@
        (injected by the P1 deploy workflow, or edited for a manual publish) so a
        hosted-demo visitor needs zero setup. The server field stays editable. -->
   <meta name="lyricbridge-api-base" content="" />
+  <!-- Phase A: Google OAuth client id (public — it's the JWT `aud`). Empty in the
+       repo; the deploy workflow injects it (like the api-base). When empty, the
+       player simply never shows the sign-in button and create stays open — but
+       the backend ALSO only enforces login when ITS GOOGLE_CLIENT_ID is set, and
+       /healthz reports auth_required so the two stay in lockstep. -->
+  <meta name="lyricbridge-google-client-id" content="" />
   <title>LyricBridge — ร้องตามเนื้อทีละคำ</title>
   <link rel="icon" href="data:," /><!-- no favicon: suppress the auto /favicon.ico request -->
   <link rel="stylesheet" href="style.css" />
@@ -27,6 +33,15 @@
   </header>
 
   <main>
+    <!-- ── Phase A: Google Sign-In (only shown when the backend requires login;
+         viewing the player and the demo never need it) ──────────── -->
+    <section class="authbar" id="authBar" hidden aria-label="เข้าสู่ระบบ">
+      <span class="auth-state" id="authState">เข้าสู่ระบบเพื่อสร้างคาราโอเกะ
+        <span class="en">Sign in to create karaoke</span></span>
+      <div id="googleSignIn"></div>
+      <button id="signOutBtn" type="button" hidden>ออกจากระบบ · Sign out</button>
+    </section>
+
     <!-- ── Step 0: one upload does everything (recommended) ──────── -->
     <section class="oneup" aria-label="อัปโหลดเพลงเดียวจบ">
       <div class="step hero" id="step0">
@@ -208,6 +223,9 @@
           <div class="export">
             <button id="exportLrc" type="button">⬇ บันทึก LRC</button>
             <button id="exportJson" type="button">⬇ บันทึก JSON</button>
+            <!-- O2: copy lyrics+timing to the clipboard (no server, no hosting —
+                 keeps copyrighted lyrics off any shared link). -->
+            <button id="copyLrc" type="button">📋 คัดลอกเนื้อ (LRC) · Copy lyrics</button>
             <button id="renderVideo" type="button" hidden>🎬 สร้างวิดีโอ · Render video</button>
           </div>
           <!-- F8: video style options (apply to 🎬 render) -->
@@ -229,6 +247,10 @@
                 <option value="5">กลางจอ · Middle</option>
                 <option value="8">บน · Top</option>
               </select></label>
+            <!-- O1: optional background image for the rendered video -->
+            <label>ภาพพื้นหลัง <span class="en">Background image</span>
+              <input id="bgImage" type="file" accept="image/png,image/jpeg,image/webp" /></label>
+            <button id="bgClear" type="button" hidden>ล้างพื้นหลัง · Clear background</button>
           </div>
         </div>
       </details>
@@ -248,8 +270,15 @@
     </footer>
   </main>
 
+  <!-- Phase A: Google Identity Services (loaded async; player.js initializes it
+       only when a client id is configured AND the backend asks for auth).
+       NOTE: no Subresource Integrity hash here on purpose — Google serves this
+       endpoint as a rolling, server-updated script with no published hash, so an
+       `integrity=` would break sign-in on their next update. It's the official
+       Google origin; the security boundary is the backend's JWT signature check. -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Phase L: this is the player page (was index.html). A small "← หน้าแรก"
        link back to the landing keeps navigation obvious on the subpath. -->
-  <script type="module" src="player.js?v=8"></script>
+  <script type="module" src="player.js?v=9"></script>
 </body>
 </html>

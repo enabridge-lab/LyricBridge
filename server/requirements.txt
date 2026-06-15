@@ -19,6 +19,11 @@ pydantic
 soundfile                  # read wav duration / sanity checks
 numpy
 
+# Phase A: verify Google Sign-In ID tokens (JWKS signature + aud/exp), with the
+# certs cached by the library. Pure-python deps (rsa/pyasn1/cachetools); only the
+# Modal `web` container actually calls it, but it's a light, app-wide dep.
+google-auth
+
 # --- M1: Server-side separation (full song -> vocals/instrumental) ---
 # Reuse nomadkaraoke's maintained separator (MIT) instead of a custom Demucs
 # wrapper. [cpu] keeps the self-host promise (onnxruntime CPU); the owner's

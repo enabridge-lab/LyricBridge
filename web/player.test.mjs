@@ -29,6 +29,7 @@ import {
   loadJobRef,
   clearJobRef,
   defaultApiBase,
+  checkBackgroundImage,
   wordProgress,
   verseCountdown,
   clampPlaybackRate,
@@ -37,6 +38,7 @@ import {
   preferredRecorderMime,
   cleanWordText,
   wantsDemo,
+  googleClientId,
 } from "./player.js";
 
 // D4: backend URL resolution — meta override for hosted build, localhost for self-host.
@@ -519,6 +521,19 @@ test("buildModel assigns a contiguous flat index across all line words", () => {
   assert.equal(m.lines[1].words[0]._i, 1);
 });
 
+// ── Phase O1: background image client-side guard ───────────────────────────
+test("checkBackgroundImage accepts png/jpeg/webp under the size cap, rejects rest", () => {
+  assert.equal(checkBackgroundImage({ type: "image/png", size: 1000 }).ok, true);
+  assert.equal(checkBackgroundImage({ type: "image/jpeg", size: 1000 }).ok, true);
+  assert.equal(checkBackgroundImage({ type: "image/webp", size: 1000 }).ok, true);
+  assert.equal(checkBackgroundImage({ type: "image/gif", size: 1000 }).ok, false);  // wrong type
+  assert.equal(checkBackgroundImage({ type: "text/plain", size: 10 }).ok, false);
+  assert.equal(checkBackgroundImage(null).ok, false);
+  // size cap (default 8 MB)
+  assert.equal(checkBackgroundImage({ type: "image/png", size: 9 * 1024 * 1024 }).ok, false);
+  assert.equal(checkBackgroundImage({ type: "image/png", size: 3 * 1024 * 1024 }, 2).ok, false);
+});
+
 // ── Phase S: sing-mode pure helpers ────────────────────────────────────────
 test("wordProgress clamps 0..1 and survives tiny/zero durations", () => {
   const w = { start: 10, end: 12 };
@@ -597,4 +612,29 @@ test("wantsDemo is true only for demo=1 and never throws on junk", () => {
   assert.equal(wantsDemo(""), false);
   assert.equal(wantsDemo(), false);                 // default arg
   assert.equal(wantsDemo("%%%not-a-query%%%"), false);
+});
+
+// ── Phase A: Google Sign-In helpers ────────────────────────────────────────
+test("googleClientId reads the meta, trims, and defaults to empty", () => {
+  assert.equal(googleClientId(null), "");
+  const none = { querySelector: () => null };
+  assert.equal(googleClientId(none), "");
+  const empty = { querySelector: () => ({ getAttribute: () => "  " }) };
+  assert.equal(googleClientId(empty), "");
+  const set = { querySelector: () => ({ getAttribute: () => "  123.apps.googleusercontent.com  " }) };
+  assert.equal(googleClientId(set), "123.apps.googleusercontent.com");
+});
+
+test("submitKaraokeJob attaches Authorization: Bearer only when a token is given", async () => {
+  const calls = [];
+  const fakeFetch = async (url, opts) => {
+    calls.push(opts);
+    return { ok: true, status: 202, json: async () => ({ job_id: "j1" }) };
+  };
+  // signed in -> header present
+  await submitKaraokeJob(new Blob(["x"]), "http://h/", fakeFetch, "th", "tok.123");
+  assert.equal(calls[0].headers.Authorization, "Bearer tok.123");
+  // not signed in -> no Authorization header at all (backend may be open)
+  await submitKaraokeJob(new Blob(["x"]), "http://h/", fakeFetch, "th", null);
+  assert.equal(calls[1].headers, undefined);
 });
