@@ -522,28 +522,37 @@ function init() {
       }
       // Phase A: the backend tells us whether login is required (it is iff it has
       // a GOOGLE_CLIENT_ID). Trust the server's answer over the local meta so the
-      // two never drift. The client id for the button comes from healthz too.
+      // two never drift. When the page wasn't already gated from the (synchronous)
+      // meta, gate it now from healthz; otherwise the page is open → start it.
       if (h && h.auth_required) {
-        authRequired = true;
-        initGoogleSignIn(h.google_client_id || googleClientId());
+        if (!pageGated) gateApp(h.google_client_id || googleClientId());
+      } else if (!pageGated) {
+        startApp();
       }
-    } catch { /* offline / pre-D5 server — no banner */ }
+    } catch {
+      // offline / pre-D5 server — no banner. Don't strand the page behind a gate
+      // we can't confirm: if we didn't already gate synchronously from the meta,
+      // open it (self-host / unreachable backend).
+      if (!pageGated) startApp();
+    }
   })();
 
-  // Phase A: render the Google button + wire the credential callback. Called only
-  // when the backend requires auth. Safe to no-op if GIS hasn't loaded or no id.
-  function initGoogleSignIn(clientId) {
-    if (!clientId || !els.authBar) return;
-    els.authBar.hidden = false;
+  // Phase A: render a Google button into `targetEl` + wire the credential
+  // callback. GIS is initialized at most once; the button can be rendered into
+  // multiple containers (the full-page gate and/or the in-page authbar). Safe to
+  // no-op until the async GIS script has loaded.
+  function initGoogleSignIn(clientId, targetEl) {
+    if (!clientId || !targetEl) return;
     const renderButton = () => {
       if (!(window.google && google.accounts && google.accounts.id)) return false;
-      google.accounts.id.initialize({
-        client_id: clientId,
-        callback: (resp) => onGoogleCredential(resp && resp.credential),
-      });
-      if (els.googleSignIn) {
-        google.accounts.id.renderButton(els.googleSignIn, { theme: "outline", size: "large" });
+      if (!gisInitialized) {
+        google.accounts.id.initialize({
+          client_id: clientId,
+          callback: (resp) => onGoogleCredential(resp && resp.credential),
+        });
+        gisInitialized = true;
       }
+      google.accounts.id.renderButton(targetEl, { theme: "outline", size: "large" });
       return true;
     };
     // GIS script is async — retry briefly until window.google exists.
@@ -555,13 +564,57 @@ function init() {
     }
   }
 
+  // Full-page sign-in gate: an opaque overlay covering the player until the user
+  // signs in. Built with DOM (no innerHTML). A "back to landing" link keeps the
+  // open, no-login landing reachable.
+  function gateApp(clientId) {
+    if (pageGated) return;
+    pageGated = true;
+    authRequired = true;
+    document.body.classList.add("auth-gated");
+    let overlay = document.getElementById("authGate");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "authGate";
+      const card = document.createElement("div");
+      card.className = "auth-gate-card";
+      const h = document.createElement("h2");
+      h.textContent = "เข้าสู่ระบบเพื่อใช้งาน";
+      const en = document.createElement("p");
+      en.className = "en";
+      en.textContent = "Sign in with Google to continue";
+      const btn = document.createElement("div");
+      btn.id = "authGateBtn";
+      const back = document.createElement("a");
+      back.href = "./index.html";
+      back.className = "auth-gate-back";
+      back.textContent = "← กลับหน้าแรก · Back to home";
+      card.append(h, en, btn, back);
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+    }
+    overlay.hidden = false;
+    initGoogleSignIn(clientId, document.getElementById("authGateBtn"));
+  }
+
+  function removeGate() {
+    pageGated = false;
+    document.body.classList.remove("auth-gated");
+    const overlay = document.getElementById("authGate");
+    if (overlay) overlay.hidden = true;
+  }
+
   function onGoogleCredential(credential) {
     if (!credential) return;
+    const wasGated = pageGated;
     googleToken = credential;
+    if (wasGated) removeGate();
+    if (els.authBar) els.authBar.hidden = false;       // show signed-in state + sign-out
     if (els.googleSignIn) els.googleSignIn.style.display = "none";
     if (els.signOutBtn) els.signOutBtn.hidden = false;
     setAuthState("เข้าสู่ระบบแล้ว", "Signed in");
-    setStatus("เข้าสู่ระบบด้วย Google แล้ว — สร้างคาราโอเกะได้เลย · Signed in", "ok");
+    setStatus("เข้าสู่ระบบด้วย Google แล้ว · Signed in", "ok");
+    if (wasGated) startApp();                            // run the deferred demo/resume
   }
 
   // Set the auth-state line as Thai text + an .en English span, via DOM (no
@@ -578,9 +631,15 @@ function init() {
   els.signOutBtn?.addEventListener("click", () => {
     googleToken = null;
     try { window.google?.accounts?.id?.disableAutoSelect?.(); } catch { /* ignore */ }
+    // The whole page is gated, so signing out re-locks it. A reload is the
+    // simplest correct reset — it pauses any demo audio and re-shows the gate.
+    if (typeof location !== "undefined" && location.reload) {
+      location.reload();
+      return;
+    }
     if (els.googleSignIn) els.googleSignIn.style.display = "";
     if (els.signOutBtn) els.signOutBtn.hidden = true;
-    setAuthState("เข้าสู่ระบบเพื่อสร้างคาราโอเกะ", "Sign in to create karaoke");
+    setAuthState("เข้าสู่ระบบเพื่อใช้งาน", "Sign in to continue");
   });
 
   let model = { words: [], lines: [] };
@@ -589,6 +648,15 @@ function init() {
   // short-lived credential). authRequired mirrors the backend's /healthz.
   let googleToken = null;
   let authRequired = false;
+  // Owner choice: the WHOLE player page (app.html) sits behind a Google sign-in
+  // gate whenever OAuth is configured — the demo and everything else only run
+  // after login. Frontend-only gate (the demo assets are public statics, so this
+  // is a UX wall, not access control). pendingDemo/appStarted defer the page's
+  // startup (demo or job-resume) until the gate is cleared.
+  let pageGated = false;
+  let appStarted = false;
+  let pendingDemo = false;
+  let gisInitialized = false;
   // F2: the /karaoke job whose instrumental is still parked on the server —
   // lets the render button POST /render/{job_id} without re-uploading audio.
   let renderJobId = null;
@@ -1554,15 +1622,18 @@ function init() {
     }
   }
 
-  // Demo intent (explicit) wins over resuming a stale job.
-  if (wantsDemo(typeof location !== "undefined" ? location.search : "")) {
-    loadDemo();
-    return;
-  }
-
-  // F4: if a job was still running when the page was refreshed, resume polling
-  // it instead of losing the run (fixes the old "don't refresh!" pain).
-  (async () => {
+  // The player's startup work (demo auto-load OR resume an in-flight job). Runs
+  // once, and only after the sign-in gate is cleared (or immediately when the
+  // page isn't gated). Demo intent wins over resuming a stale job.
+  async function startApp() {
+    if (appStarted) return;
+    appStarted = true;
+    if (pendingDemo) {
+      await loadDemo();
+      return;
+    }
+    // F4: if a job was still running when the page was refreshed, resume polling
+    // it instead of losing the run (fixes the old "don't refresh!" pain).
     const saved = loadJobRef(localStorage);
     if (!saved) return;
     try {
@@ -1578,7 +1649,19 @@ function init() {
       clearProcessing();
       setStatus("งานเดิมหมดอายุหรือไม่สำเร็จ · Previous job expired or failed — " + err.message, "error");
     }
-  })();
+  }
+
+  pendingDemo = wantsDemo(typeof location !== "undefined" ? location.search : "");
+
+  // Whole-page gate decision. If a Google client id is configured in the meta we
+  // know SYNCHRONOUSLY that OAuth is on → gate before any content shows (no
+  // flash). When the meta is empty (self-host, or the hosted build didn't inject
+  // it), the async /healthz block above decides: it gates if the backend requires
+  // auth, else starts the app — and on a network error it opens the page.
+  const _gateClientId = googleClientId();
+  if (_gateClientId) {
+    gateApp(_gateClientId);
+  }
 }
 
 if (typeof document !== "undefined") {

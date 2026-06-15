@@ -567,3 +567,31 @@ body.stage-mode .word.active {
   color: var(--text); cursor: pointer;
 }
 .authbar #signOutBtn:hover { border-color: var(--accent); }
+
+/* ════════════════════════════════════════════════════════════════
+   Phase A (owner) — full-page sign-in gate on app.html. Opaque overlay
+   covers the player until the user signs in with Google. Landing is
+   never gated. Frontend-only UX wall (demo assets are public statics).
+   ════════════════════════════════════════════════════════════════ */
+#authGate {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: center; padding: 1.25rem;
+  background:
+    radial-gradient(900px 480px at 12% -6%, rgba(255, 155, 184, .28), transparent 60%),
+    radial-gradient(900px 520px at 92% -4%, rgba(155, 123, 227, .22), transparent 58%),
+    var(--bg);
+}
+#authGate[hidden] { display: none; }
+.auth-gate-card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 2rem 1.8rem; max-width: 26rem; width: 100%; text-align: center;
+}
+.auth-gate-card h2 { margin: 0 0 .3rem; font-size: 1.3rem; }
+.auth-gate-card .en { display: block; margin: 0 0 1.2rem; font-size: .85rem; color: var(--dim); }
+.auth-gate-card #authGateBtn { display: flex; justify-content: center; min-height: 44px; }
+.auth-gate-back {
+  display: inline-block; margin-top: 1.1rem; font-size: .85rem; color: var(--accent);
+}
+/* Belt-and-braces: while gated, don't let the page scroll behind the overlay. */
+body.auth-gated { overflow: hidden; }
