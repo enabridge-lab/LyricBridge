@@ -158,6 +158,12 @@ export function serializeLines(lines) {
     .map((ln) => ln.words.map((w) => ({ text: w.text, start: w.start, end: w.end })));
 }
 
+// E1: normalize text typed into a contentEditable word — collapse the stray
+// whitespace/newlines a contentEditable can introduce, and trim. Pure.
+export function cleanWordText(raw) {
+  return (raw || "").replace(/\s+/g, " ").trim();
+}
+
 // Set a word's start to `t` (tap-to-sync) and keep the line non-overlapping:
 // clamp end to >= start, and push the previous word's end down if we moved past
 // it. Returns nothing; mutates in place. Pure aside from the array it's given.
@@ -385,6 +391,17 @@ export function preferredRecorderMime(
   return "";
 }
 
+// D1: should the app auto-load the pre-baked demo? True when the URL carries
+// `?demo=1` (landing's "ดูตัวอย่าง" button links to app.html?demo=1). Pure +
+// forgiving so it unit-tests without a browser and never throws on junk input.
+export function wantsDemo(search = "") {
+  try {
+    return new URLSearchParams(search).get("demo") === "1";
+  } catch {
+    return false;
+  }
+}
+
 // Pull a "{stage}: {error}" message out of a failed JSON response body.
 async function _serverError(res) {
   let detail = `HTTP ${res.status}`;
@@ -483,6 +500,7 @@ function init() {
   let wordSpans = [];
   let lastActive = -1;
   let editMode = false;
+  let editingSpan = null; // E1: the word currently being retyped inline (if any)
   let vocalAudio = null;
   let vocalGuideVol = Number(localStorage.getItem("vocalGuideVol") ?? "") || 0.3;
   // Constant sync offset (ms), persisted per browser. + = lyrics lead the audio.
@@ -890,7 +908,7 @@ function init() {
   }
 
   function editWord(w, span) {
-    if (!editMode) return;
+    if (!editMode || editingSpan) return; // ignore taps while retyping inline
     // Tap-to-sync: pin this word's start to where the audio is now.
     syncWordStart(model.words, w._i, els.audio.currentTime);
     span.classList.add("edited");
@@ -899,16 +917,63 @@ function init() {
     setStatus(`synced "${w.text}" → ${w.start.toFixed(2)}s`);
   }
 
+  // E1: edit a word's text inline (replaces the old window.prompt). Double-click
+  // a word in edit mode → the span becomes contentEditable; Enter/blur commits,
+  // Esc cancels. On commit we drop the stale romanization and reuse confirmWord
+  // (clears the F3 low-confidence flag) — same post-edit semantics as before.
   function retypeWord(w, span) {
-    if (!editMode) return;
-    const next = window.prompt("แก้คำนี้ · Fix this word:", w.text);
-    if (next != null && next !== w.text) {
-      w.text = next;
-      w.roman = null; // F7: the old romanization is stale for the new text
-      span.textContent = next; // also drops the <small class="roman"> child
-      span.classList.add("edited");
-      confirmWord(w, span);
+    if (!editMode || editingSpan) return;
+    editingSpan = span;
+    const original = w.text;
+    span.textContent = original;      // show just the word (drops the roman child)
+    span.contentEditable = "true";
+    span.classList.add("editing-word");
+    span.focus();
+    // select the whole word so typing replaces it
+    const sel = window.getSelection?.();
+    if (sel) {
+      const range = document.createRange();
+      range.selectNodeContents(span);
+      sel.removeAllRanges();
+      sel.addRange(range);
     }
+
+    let done = false;
+    const restoreRoman = () => {
+      if (!w.roman) return;
+      const r = document.createElement("small");
+      r.className = "roman";
+      r.textContent = w.roman;
+      span.appendChild(r);
+    };
+    const finish = (commit) => {
+      if (done) return;
+      done = true;
+      span.contentEditable = "false";
+      span.classList.remove("editing-word");
+      span.removeEventListener("keydown", onKey);
+      span.removeEventListener("blur", onBlur);
+      editingSpan = null;
+      const next = cleanWordText(span.textContent);
+      if (commit && next && next !== original) {
+        w.text = next;
+        w.roman = null;               // old romanization is stale for new text
+        span.textContent = next;      // ensure no leftover child nodes
+        span.classList.add("edited");
+        confirmWord(w, span);
+        setStatus(`แก้เป็น "${next}" · edited`, "ok");
+      } else {
+        span.textContent = original;  // cancel / empty / unchanged -> restore
+        restoreRoman();
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === "Enter") { e.preventDefault(); finish(true); }
+      else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+    };
+    const onBlur = () => finish(true);
+    span.addEventListener("keydown", onKey);
+    span.addEventListener("blur", onBlur);
   }
 
   // §5: stamp the currently-highlighted word to the playhead (LRC-maker style).
@@ -1314,6 +1379,36 @@ function init() {
   }
 
   requestAnimationFrame(highlight);
+
+  // D1: pre-baked demo — play a copyright-safe karaoke example with NO backend,
+  // NO upload, NO GPU. The landing's "ดูตัวอย่าง" button links to app.html?demo=1.
+  // Assets are static under web/demo/. loadModel() handles lyrics; the audio src
+  // points at the local m4a (not payload.instrumental_url), and renderJobId stays
+  // null so the 🎬 render button (which needs a parked server instrumental) stays
+  // hidden for the demo. Degrades gracefully if the assets aren't present yet.
+  async function loadDemo() {
+    try {
+      setStatus("กำลังโหลดตัวอย่าง… · Loading the example", "busy");
+      const res = await fetch("./demo/demo.json");
+      if (!res.ok) throw new Error("demo not found (" + res.status + ")");
+      const payload = await res.json();
+      loadModel(payload);                       // lyrics + tools (no audio here)
+      els.audio.src = "./demo/demo.m4a";        // local asset — no /jobs/* call
+      els.audio.load();
+      document.body.classList.add("has-audio", "has-lyrics");
+      renderJobId = null;                       // no parked instrumental → keep 🎬 hidden
+      markLoaded(els.step0, els.songDrop, els.songName, null);
+      setStatus("ตัวอย่างพร้อมแล้ว — กดเล่นเพื่อร้องตาม · Demo ready — press play", "ok");
+    } catch (err) {
+      setStatus("โหลดตัวอย่างไม่สำเร็จ · Couldn't load the demo — " + err.message, "error");
+    }
+  }
+
+  // Demo intent (explicit) wins over resuming a stale job.
+  if (wantsDemo(typeof location !== "undefined" ? location.search : "")) {
+    loadDemo();
+    return;
+  }
 
   // F4: if a job was still running when the page was refreshed, resume polling
   // it instead of losing the run (fixes the old "don't refresh!" pain).

@@ -3,250 +3,172 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- D4: single config point for the backend URL. Empty in the repo so a
-       self-host clone falls back to http://localhost:8000 (see player.js
-       defaultApiBase). The GitHub Pages build sets `content` to the Modal URL
-       (injected by the P1 deploy workflow, or edited for a manual publish) so a
-       hosted-demo visitor needs zero setup. The server field stays editable. -->
-  <meta name="lyricbridge-api-base" content="" />
-  <title>LyricBridge — ร้องตามเนื้อทีละคำ</title>
+  <meta name="description" content="LyricBridge — เปลี่ยนเพลงโปรดให้เป็นคาราโอเกะ ซับไทยซิงก์ทีละคำ. Turn any song into word-synced Thai karaoke. Open-source, MIT, self-hostable." />
+  <title>LyricBridge — คาราโอเกะซับไทยซิงก์ทีละคำ</title>
   <link rel="icon" href="data:," /><!-- no favicon: suppress the auto /favicon.ico request -->
+  <!-- Landing is static — no player.js. Assets are RELATIVE (GitHub Pages subpath /LyricBridge/). -->
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
+<body class="landing">
+  <a class="skip-link" href="#main">ข้ามไปเนื้อหา · Skip to content</a>
+
   <header class="app-header">
     <div class="brand">
       <span class="logo" aria-hidden="true">🎤</span>
       <div class="brand-text">
         <h1>LyricBridge <span class="sub">คาราโอเกะซิงก์คำ</span></h1>
-        <p class="tagline">ใส่เพลงแล้วร้องตามเนื้อที่ไฮไลต์ทีละคำ
-          <span class="en">Add a song and sing along — lyrics light up word by word</span></p>
+        <p class="tagline">โอเพนซอร์ส · ร้องไทย/ลูกทุ่งตามเนื้อทีละคำ
+          <span class="en">Open-source word-synced Thai karaoke</span></p>
       </div>
     </div>
   </header>
 
-  <main>
-    <!-- ── Step 0: one upload does everything (recommended) ──────── -->
-    <section class="oneup" aria-label="อัปโหลดเพลงเดียวจบ">
-      <div class="step hero" id="step0">
-        <div class="step-head">
-          <span class="num">★</span>
-          <div><h2>ใส่เพลงเต็มเพลงเดียว แล้วร้องได้เลย</h2>
-            <p class="en">Just drop one full song — we remove the vocals &amp; write the lyrics</p></div>
-        </div>
-        <label class="dropzone" id="songDrop">
-          <input id="songFile" type="file" accept="audio/*" hidden />
-          <span class="dz-icon" aria-hidden="true">🎤</span>
-          <span class="dz-text">เลือกหรือลากเพลงเต็มมาที่นี่
-            <small>Click or drag a full song — AI separates vocals and transcribes (a few minutes)</small></span>
-          <span class="dz-file" id="songName"></span>
-        </label>
-      </div>
-    </section>
-
-    <!-- ── Manual mode: bring your own stems (advanced) ──────────── -->
-    <details class="manual">
-      <summary>โหมดขั้นสูง: ใส่ instrumental + เนื้อเพลงเอง
-        <span class="en">Advanced: supply your own instrumental + lyrics</span></summary>
-    <section class="setup" aria-label="ตั้งค่าเริ่มต้น">
-      <!-- Step 1 — music -->
-      <div class="step" id="step1">
-        <div class="step-head">
-          <span class="num">1</span>
-          <div><h2>ใส่เพลงของคุณ</h2><p class="en">Add your song</p></div>
-        </div>
-        <label class="dropzone" id="audioDrop">
-          <input id="audioFile" type="file" accept="audio/*" hidden />
-          <span class="dz-icon" aria-hidden="true">🎵</span>
-          <span class="dz-text">เลือกหรือลากไฟล์เพลงมาที่นี่
-            <small>Click to choose, or drag an audio file here</small></span>
-          <span class="dz-file" id="audioName"></span>
-        </label>
-      </div>
-
-      <!-- Step 2 — lyrics -->
-      <div class="step" id="step2">
-        <div class="step-head">
-          <span class="num">2</span>
-          <div><h2>ใส่เนื้อเพลง</h2><p class="en">Add lyrics</p></div>
-        </div>
-        <label class="dropzone" id="jsonDrop">
-          <input id="jsonFile" type="file" accept="application/json,.json" hidden />
-          <span class="dz-icon" aria-hidden="true">📄</span>
-          <span class="dz-text">เลือกไฟล์เนื้อเพลง (.json)
-            <small>Choose a lyrics file you already have</small></span>
-          <span class="dz-file" id="jsonName"></span>
-        </label>
-
-        <details class="advanced">
-          <summary>ยังไม่มีไฟล์เนื้อเพลง? ให้ AI ถอดจากเสียงร้อง
-            <span class="en">No lyrics file? Let AI write them from vocals</span></summary>
-          <div class="adv-body">
-            <label class="field">
-              ที่อยู่เซิร์ฟเวอร์ <span class="en">Server address</span>
-              <input id="apiBase" type="text" value="http://localhost:8000" />
-            </label>
-            <label class="dropzone small" id="vocalDrop">
-              <input id="vocalFile" type="file" accept="audio/*" hidden />
-              <span class="dz-icon" aria-hidden="true">🎙️</span>
-              <span class="dz-text">เลือกไฟล์เสียงร้อง แล้วรอ AI ถอดเนื้อ
-                <small>Choose a vocals file — AI transcribes the lyrics</small></span>
-              <span class="dz-file" id="vocalName"></span>
-            </label>
-          </div>
-        </details>
-      </div>
-    </section>
-    </details>
-
-    <!-- Status / progress — always visible (e.g. AI transcribing feedback) -->
-    <p id="syncBadge" class="sync-badge" hidden></p>
-    <p id="status" class="status" role="status" aria-live="polite"></p>
-
-    <!-- ── Player ──────────────────────────────────────────────── -->
-    <section class="player" aria-label="เครื่องเล่น">
-      <audio id="audio" controls></audio>
-      <div class="offset">
-        <label for="syncOffset">ปรับจังหวะคำ <span class="en">Sync offset</span></label>
-        <input id="syncOffset" type="range" min="-2000" max="2000" step="50" value="0" />
-        <span id="syncOffsetVal" class="offset-val">0 ms</span>
-        <span class="offset-hint">เลื่อนซ้าย = คำมาช้าลง · ขวา = คำมาเร็วขึ้น
-          <span class="en">left = later, right = earlier</span></span>
-      </div>
-      <!-- Vocal Guide -->
-      <div class="vocal-guide-panel" id="vocalGuidePanel" hidden>
-        <label class="vg-toggle">
-          <input type="checkbox" id="vocalGuideToggle" />
-          <span>🎤 เสียงนำร้อง <span class="en">Vocal Guide</span></span>
-        </label>
-        <div class="vg-slider-row" id="vocalSliderRow">
-          <label for="vocalVolume" class="vg-label">ดัง</label>
-          <input type="range" id="vocalVolume" min="0" max="100" value="30" />
-          <span id="vocalVolumeVal">30%</span>
-        </div>
-      </div>
-
-      <!-- ── Phase S: sing mode ─────────────────────────────────── -->
-      <details class="sing-tools">
-        <summary>🎤 โหมดร้อง <span class="en">Sing mode</span></summary>
-        <div class="sing-body">
-          <!-- S1 -->
-          <div class="sing-row">
-            <button id="stageBtn" type="button" aria-pressed="false">🎬 ขึ้นเวที (เต็มจอ)
-              <span class="en">· Stage (fullscreen)</span></button>
-          </div>
-          <!-- S2 tempo -->
-          <div class="sing-row">
-            <label for="tempo">ความเร็ว <span class="en">Speed</span></label>
-            <input id="tempo" type="range" min="0.5" max="1.5" step="0.05" value="1" />
-            <span id="tempoVal" class="sing-val">1.00×</span>
-          </div>
-          <!-- S2 A/B loop -->
-          <div class="sing-row">
-            <span class="sing-label">วนซ้ำช่วง <span class="en">A/B loop</span></span>
-            <button id="loopA" type="button">ตั้ง A · Set A</button>
-            <button id="loopB" type="button">ตั้ง B · Set B</button>
-            <button id="loopClear" type="button">ล้าง · Clear</button>
-            <span id="loopState" class="sing-val">A — · B —</span>
-          </div>
-          <!-- S3 player display theme -->
-          <div class="sing-row">
-            <label for="themeSize">ขนาดตัวอักษร <span class="en">Lyrics size</span></label>
-            <select id="themeSize">
-              <option value="sm">เล็ก · S</option>
-              <option value="md" selected>กลาง · M</option>
-              <option value="lg">ใหญ่ · L</option>
-              <option value="xl">ใหญ่มาก · XL</option>
-            </select>
-            <label for="themeText">สีตัวอักษร <span class="en">Text</span></label>
-            <input id="themeText" type="color" value="#4b4364" />
-            <label for="themeBg">พื้นหลัง <span class="en">Background</span></label>
-            <input id="themeBg" type="color" value="#fbf6fe" />
-          </div>
-          <!-- S4 record -->
-          <div class="sing-row">
-            <button id="recordBtn" type="button">⏺ อัดเสียงร้อง <span class="en">· Record</span></button>
-            <span id="recordState" class="sing-val" role="status" aria-live="polite"></span>
-          </div>
-          <p class="sing-privacy">🔒 การอัดเสียงทำในเบราว์เซอร์ ไม่ถูกส่งขึ้นเซิร์ฟเวอร์
-            <span class="en">Recording happens in your browser and is never uploaded</span></p>
-        </div>
-      </details>
-    </section>
-
-    <!-- ── Lyrics stage ────────────────────────────────────────── -->
-    <section class="stage">
-      <div id="lyrics" class="lyrics" aria-live="polite">
-        <div class="empty">
-          <span class="empty-icon" aria-hidden="true">🎶</span>
-          <p>ใส่เพลงและเนื้อเพลงด้านบนเพื่อเริ่มร้อง
-            <small>Add a song and lyrics above to start singing</small></p>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── Edit tools (appear after lyrics load) ───────────────── -->
-    <section class="tools">
-      <details class="edit-tools">
-        <summary>✏️ แก้ไขเนื้อเพลง / จังหวะ
-          <span class="en">Fix lyrics &amp; timing</span></summary>
-        <div class="editbar">
-          <label class="switch">
-            <input id="editToggle" type="checkbox" /> เปิดโหมดแก้ไข <span class="en">Edit mode</span>
-          </label>
-          <label class="switch">
-            <input id="romanToggle" type="checkbox" /> 🔤 คำอ่าน <span class="en">Romanization</span>
-          </label>
-          <p class="edithint">คลิกคำ = ตั้งเวลาให้ตรงจังหวะ · ดับเบิลคลิก = แก้คำที่ผิด · กด <kbd>Space</kbd> = ตอกเวลาคำที่กำลังร้อง
-            <small>Click a word to sync · double-click to fix text · press Space to stamp the current word to the playhead</small></p>
-          <div class="nudge">
-            <button id="nudgeBack" type="button">◀ −50ms</button>
-            <button id="nudgeFwd" type="button">+50ms ▶</button>
-            <span class="en">nudge the current word</span>
-          </div>
-          <div class="export">
-            <button id="exportLrc" type="button">⬇ บันทึก LRC</button>
-            <button id="exportJson" type="button">⬇ บันทึก JSON</button>
-            <button id="renderVideo" type="button" hidden>🎬 สร้างวิดีโอ · Render video</button>
-          </div>
-          <!-- F8: video style options (apply to 🎬 render) -->
-          <div class="render-style" id="renderStylePanel" hidden>
-            <label>ฟอนต์ <span class="en">Font</span>
-              <select id="styleFont">
-                <option value="Sarabun">Sarabun</option>
-                <option value="Noto Sans Thai">Noto Sans Thai</option>
-              </select></label>
-            <label>ขนาด <span class="en">Size</span>
-              <input id="styleSize" type="number" min="8" max="200" value="48" /></label>
-            <label>สีตัวอักษร <span class="en">Text</span>
-              <input id="stylePrimary" type="color" value="#ffffff" /></label>
-            <label>สีคำที่ร้อง <span class="en">Highlight</span>
-              <input id="styleHighlight" type="color" value="#ffa500" /></label>
-            <label>ตำแหน่ง <span class="en">Position</span>
-              <select id="stylePosition">
-                <option value="2">ล่าง · Bottom</option>
-                <option value="5">กลางจอ · Middle</option>
-                <option value="8">บน · Top</option>
-              </select></label>
-          </div>
-        </div>
-      </details>
-    </section>
-
-    <!-- P4: privacy + copyright honesty note. TTL number must match STEM_TTL_SEC. -->
-    <footer class="privacy-note">
-      <p>
-        🔒 <strong>ความเป็นส่วนตัว:</strong> ไฟล์เพลงที่อัปโหลดถูกประมวลผลในที่พักชั่วคราว
-        แล้ว<strong>ลบทันที</strong> ไม่เก็บถาวร — สเต็ม (ดนตรี/เสียงร้อง) ที่สร้างขึ้นถูกลบ
-        ภายในประมาณ 30 นาที. คุณเป็นผู้รับผิดชอบลิขสิทธิ์ของไฟล์ที่อัปโหลด (การแยกสเต็ม
-        ไม่เปลี่ยนลิขสิทธิ์เพลง).
-        <span class="en">Uploaded audio is processed in temp storage and deleted immediately;
-        generated stems are purged within ~30&nbsp;min. You are responsible for the rights to
-        what you upload.</span>
+  <main id="main">
+    <!-- ── Hero ────────────────────────────────────────────────── -->
+    <section class="lp-hero" aria-labelledby="hero-h">
+      <h2 id="hero-h" class="lp-hero-title">เปลี่ยนเพลงโปรดให้เป็นคาราโอเกะ<br />ซับไทยซิงก์ทีละคำ
+        <span class="en">Turn any song into word-synced Thai karaoke.</span>
+      </h2>
+      <p class="lp-hero-sub">อัปเพลงเต็มเพลงเดียว → AI ตัดเสียงร้องออก → เขียนเนื้อไทยจับเวลาทีละคำ →
+        ร้องในเบราว์เซอร์ หรือเซฟเป็นวิดีโอคาราโอเกะ.
+        <span class="en">Upload one full song → vocals removed → word-timed Thai lyrics →
+          sing in your browser or export a karaoke video.</span>
       </p>
-    </footer>
+      <div class="lp-cta-row">
+        <a class="lp-btn primary" href="./app.html">ลองเลย — ฟรี<span class="en"> · Try it free</span></a>
+        <a class="lp-btn ghost" href="./app.html?demo=1">▶ ดูตัวอย่าง<span class="en"> · See a live example</span></a>
+      </div>
+      <p class="lp-note">ไม่ต้องสมัคร ไม่ต้องล็อกอินเพื่อดูตัวอย่าง
+        <span class="en">No sign-up — the demo needs no login</span></p>
+    </section>
+
+    <!-- ── 1-minute overview ───────────────────────────────────── -->
+    <section class="lp-section" aria-labelledby="overview-h">
+      <h2 id="overview-h">ภาพรวมใน 1 นาที <span class="en">The 1-minute overview</span></h2>
+      <p class="lp-lead">
+        ใส่เพลงเต็มหนึ่งเพลง แล้ว LyricBridge จะ<strong>แยกเสียงร้องออกจากดนตรี</strong>
+        ด้วย AI, ให้ Whisper รุ่นปรับสำหรับภาษาไทย<strong>ถอดเป็นเนื้อเพลง</strong> และ
+        wav2vec2 <strong>จับเวลาให้ตรงทีละคำ</strong> — จากนั้นคุณร้องตามไฮไลต์ในเบราว์เซอร์
+        ได้ทันที หรือกดสร้างวิดีโอคาราโอเกะไว้แชร์. โฟกัสเพลงไทยและลูกทุ่งซึ่งเป็นโจทย์ที่ยากที่สุด.
+        <span class="en">Drop in a full song; AI removes the vocals, a Thai-tuned Whisper writes
+          the lyrics, and wav2vec2 times them word by word — then sing along in the browser or
+          export a karaoke video. Built Thai/luk-thung-first.</span>
+      </p>
+    </section>
+
+    <!-- ── How it works (4 steps) ──────────────────────────────── -->
+    <section class="lp-section" aria-labelledby="how-h">
+      <h2 id="how-h">ทำงานอย่างไร <span class="en">How it works</span></h2>
+      <ol class="lp-steps">
+        <li class="lp-step">
+          <span class="lp-step-num" aria-hidden="true">1</span>
+          <h3>อัปเพลง <span class="en">Add a song</span></h3>
+          <p>ลากไฟล์เพลงเต็มมาวางหนึ่งไฟล์
+            <span class="en">Drop in one full audio file</span></p>
+        </li>
+        <li class="lp-step">
+          <span class="lp-step-num" aria-hidden="true">2</span>
+          <h3>ตัดเสียงร้อง <span class="en">Remove vocals</span></h3>
+          <p>AI (Demucs) แยกดนตรีออกจากเสียงร้อง
+            <span class="en">AI (Demucs) separates music from vocals</span></p>
+        </li>
+        <li class="lp-step">
+          <span class="lp-step-num" aria-hidden="true">3</span>
+          <h3>ถอด + จับเวลา <span class="en">Transcribe &amp; time</span></h3>
+          <p>Whisper ภาษาไทย + wav2vec2 จับเวลาทีละคำ
+            <span class="en">Thai Whisper + wav2vec2 align each word</span></p>
+        </li>
+        <li class="lp-step">
+          <span class="lp-step-num" aria-hidden="true">4</span>
+          <h3>ร้อง / เซฟวิดีโอ <span class="en">Sing / export</span></h3>
+          <p>ร้องตามในเบราว์เซอร์ หรือเซฟวิดีโอคาราโอเกะ
+            <span class="en">Sing in the browser or export a video</span></p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ── Feature highlights ──────────────────────────────────── -->
+    <section class="lp-section" aria-labelledby="feat-h">
+      <h2 id="feat-h">จุดเด่น <span class="en">Highlights</span></h2>
+      <ul class="lp-features">
+        <li class="lp-feature">
+          <span class="lp-feat-icon" aria-hidden="true">🎯</span>
+          <h3>ไฮไลต์ทีละคำเรียลไทม์ <span class="en">Real-time word highlight</span></h3>
+          <p>คำที่กำลังร้องสว่างขึ้นตรงจังหวะ <span class="en">The current word lights up on beat</span></p>
+        </li>
+        <li class="lp-feature">
+          <span class="lp-feat-icon" aria-hidden="true">🇹🇭</span>
+          <h3>โฟกัสเพลงไทย/ลูกทุ่ง <span class="en">Thai &amp; luk-thung first</span></h3>
+          <p>ปรับมาเพื่อภาษาไทยโดยเฉพาะ <span class="en">Tuned for Thai, the hard case</span></p>
+        </li>
+        <li class="lp-feature">
+          <span class="lp-feat-icon" aria-hidden="true">✏️</span>
+          <h3>แก้เนื้อเองแล้ว re-render <span class="en">Edit &amp; re-render</span></h3>
+          <p>แก้คำที่ผิดแล้วสร้างวิดีโอใหม่ได้ <span class="en">Fix words, re-render the video</span></p>
+        </li>
+        <li class="lp-feature">
+          <span class="lp-feat-icon" aria-hidden="true">🎤</span>
+          <h3>Vocal guide <span class="en">Vocal guide</span></h3>
+          <p>เปิดเสียงร้องต้นฉบับเบาๆ ช่วยจับคีย์ <span class="en">Fade in the original vocal to find the key</span></p>
+        </li>
+        <li class="lp-feature">
+          <span class="lp-feat-icon" aria-hidden="true">🎬</span>
+          <h3>Export วิดีโอคาราโอเกะ <span class="en">Export karaoke video</span></h3>
+          <p>เซฟ mp4 พร้อมเนื้อกวาดทีละคำ <span class="en">Save an mp4 with the word sweep burned in</span></p>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── Trust / privacy (mirrors the player footer + STEM_TTL_SEC) ─ -->
+    <section class="lp-section lp-trust" aria-labelledby="trust-h">
+      <h2 id="trust-h">🔒 ความเป็นส่วนตัว <span class="en">Privacy</span></h2>
+      <p>
+        ไฟล์เพลงที่อัปโหลดถูกประมวลผลในที่พักชั่วคราวแล้ว<strong>ลบทันที</strong> ไม่เก็บถาวร —
+        สเต็ม (ดนตรี/เสียงร้อง) ที่สร้างขึ้นถูกลบภายในประมาณ 30 นาที. คุณเป็นผู้รับผิดชอบลิขสิทธิ์
+        ของไฟล์ที่อัปโหลด (การแยกสเต็มไม่เปลี่ยนลิขสิทธิ์เพลง).
+        <span class="en">Uploaded audio is processed in temporary storage and deleted immediately;
+          generated stems are purged within ~30&nbsp;min. You are responsible for the rights to
+          what you upload — separating stems does not change a song's copyright.</span>
+      </p>
+    </section>
+
+    <!-- ── Open-source / self-host ─────────────────────────────── -->
+    <section class="lp-section lp-oss" aria-labelledby="oss-h">
+      <h2 id="oss-h">โอเพนซอร์ส · รันเองได้ <span class="en">Open-source &amp; self-hostable</span></h2>
+      <p>
+        LyricBridge เป็นโอเพนซอร์ส (สัญญาอนุญาต MIT) — รันบนเครื่องคุณเองได้ด้วย
+        <code>docker compose up</code>. โค้ด, เอกสาร และวิธีรันอยู่บน GitHub.
+        <span class="en">LyricBridge is MIT-licensed and runs on your own machine with
+          <code>docker compose up</code>. Code, docs, and instructions are on GitHub.</span>
+      </p>
+      <p>
+        <a class="lp-btn ghost" href="https://github.com/enabridge-lab/LyricBridge"
+           rel="noopener">⭐ ดูบน GitHub<span class="en"> · View on GitHub</span></a>
+      </p>
+    </section>
+
+    <!-- ── Closing CTA ─────────────────────────────────────────── -->
+    <section class="lp-section lp-cta-end" aria-labelledby="cta-h">
+      <h2 id="cta-h">พร้อมร้องหรือยัง? <span class="en">Ready to sing?</span></h2>
+      <div class="lp-cta-row">
+        <a class="lp-btn primary" href="./app.html">ลองเลย — ฟรี<span class="en"> · Try it free</span></a>
+        <a class="lp-btn ghost" href="./app.html?demo=1">▶ ดูตัวอย่าง<span class="en"> · See a live example</span></a>
+      </div>
+    </section>
   </main>
 
-  <script type="module" src="player.js?v=7"></script>
+  <footer class="lp-footer">
+    <p>
+      © <span id="lp-year">2026</span> LyricBridge · MIT ·
+      <a href="https://github.com/enabridge-lab/LyricBridge/blob/main/docs/COPYRIGHT_AND_LICENSES.md"
+         rel="noopener">ลิขสิทธิ์ &amp; สัญญาอนุญาต · Licenses</a>
+    </p>
+    <p class="en">Made for Thai songs — vocals removed, lyrics word-timed. You bring the rights to your audio.</p>
+  </footer>
+
+  <!-- Tiny inline script: just the © year. No app logic, no network. -->
+  <script>
+    document.getElementById("lp-year").textContent = new Date().getFullYear();
+  </script>
 </body>
 </html>
