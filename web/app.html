@@ -126,6 +126,53 @@
           <span id="vocalVolumeVal">30%</span>
         </div>
       </div>
+
+      <!-- ── Phase S: sing mode ─────────────────────────────────── -->
+      <details class="sing-tools">
+        <summary>🎤 โหมดร้อง <span class="en">Sing mode</span></summary>
+        <div class="sing-body">
+          <!-- S1 -->
+          <div class="sing-row">
+            <button id="stageBtn" type="button" aria-pressed="false">🎬 ขึ้นเวที (เต็มจอ)
+              <span class="en">· Stage (fullscreen)</span></button>
+          </div>
+          <!-- S2 tempo -->
+          <div class="sing-row">
+            <label for="tempo">ความเร็ว <span class="en">Speed</span></label>
+            <input id="tempo" type="range" min="0.5" max="1.5" step="0.05" value="1" />
+            <span id="tempoVal" class="sing-val">1.00×</span>
+          </div>
+          <!-- S2 A/B loop -->
+          <div class="sing-row">
+            <span class="sing-label">วนซ้ำช่วง <span class="en">A/B loop</span></span>
+            <button id="loopA" type="button">ตั้ง A · Set A</button>
+            <button id="loopB" type="button">ตั้ง B · Set B</button>
+            <button id="loopClear" type="button">ล้าง · Clear</button>
+            <span id="loopState" class="sing-val">A — · B —</span>
+          </div>
+          <!-- S3 player display theme -->
+          <div class="sing-row">
+            <label for="themeSize">ขนาดตัวอักษร <span class="en">Lyrics size</span></label>
+            <select id="themeSize">
+              <option value="sm">เล็ก · S</option>
+              <option value="md" selected>กลาง · M</option>
+              <option value="lg">ใหญ่ · L</option>
+              <option value="xl">ใหญ่มาก · XL</option>
+            </select>
+            <label for="themeText">สีตัวอักษร <span class="en">Text</span></label>
+            <input id="themeText" type="color" value="#4b4364" />
+            <label for="themeBg">พื้นหลัง <span class="en">Background</span></label>
+            <input id="themeBg" type="color" value="#fbf6fe" />
+          </div>
+          <!-- S4 record -->
+          <div class="sing-row">
+            <button id="recordBtn" type="button">⏺ อัดเสียงร้อง <span class="en">· Record</span></button>
+            <span id="recordState" class="sing-val" role="status" aria-live="polite"></span>
+          </div>
+          <p class="sing-privacy">🔒 การอัดเสียงทำในเบราว์เซอร์ ไม่ถูกส่งขึ้นเซิร์ฟเวอร์
+            <span class="en">Recording happens in your browser and is never uploaded</span></p>
+        </div>
+      </details>
     </section>
 
     <!-- ── Lyrics stage ────────────────────────────────────────── -->
