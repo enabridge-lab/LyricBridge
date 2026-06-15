@@ -29,6 +29,7 @@ import {
   loadJobRef,
   clearJobRef,
   defaultApiBase,
+  wantsDemo,
 } from "./player.js";
 
 // D4: backend URL resolution — meta override for hosted build, localhost for self-host.
@@ -509,4 +510,16 @@ test("buildModel assigns a contiguous flat index across all line words", () => {
   assert.equal(m.lines.length, 2);
   assert.equal(m.lines[0].words[0]._i, 0);
   assert.equal(m.lines[1].words[0]._i, 1);
+});
+
+// D1: ?demo=1 detection (drives auto-loading the pre-baked, no-backend demo).
+test("wantsDemo is true only for demo=1 and never throws on junk", () => {
+  assert.equal(wantsDemo("?demo=1"), true);
+  assert.equal(wantsDemo("demo=1"), true);          // leading ? optional
+  assert.equal(wantsDemo("?foo=bar&demo=1"), true); // among other params
+  assert.equal(wantsDemo("?demo=0"), false);
+  assert.equal(wantsDemo("?demo=true"), false);     // strictly "1"
+  assert.equal(wantsDemo(""), false);
+  assert.equal(wantsDemo(), false);                 // default arg
+  assert.equal(wantsDemo("%%%not-a-query%%%"), false);
 });
