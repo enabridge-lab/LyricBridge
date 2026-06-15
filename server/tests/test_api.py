@@ -486,6 +486,46 @@ def test_render_job_rejects_bad_style_and_unlisted_font(tmp_path, monkeypatch):
     assert r.status_code == 400  # '#' prefix is the client's to strip
 
 
+def test_render_job_passes_valid_background_to_render(tmp_path, monkeypatch):
+    # O1: a base64 background in the body is decoded, staged, and threaded into
+    # render_video as background_image.
+    import base64
+
+    job_id = _park_instrumental(tmp_path, monkeypatch)
+    video = tmp_path / "karaoke.mp4"
+    video.write_bytes(b"mp4")
+    seen = {}
+
+    def fake_render(audio_path, ass, work_dir, **kwargs):
+        bg = kwargs.get("background_image")
+        # read INSIDE the handler — tmpdir is rmtree'd by the response BackgroundTask
+        seen["bg_suffix"] = bg.suffix if bg else None
+        seen["bg_bytes"] = bg.read_bytes() if bg else None
+        return render.RenderResult(video_path=video, width=1280, height=720, font="F")
+
+    monkeypatch.setattr(main.render, "render_video", fake_render)
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+    b64 = "data:image/png;base64," + base64.b64encode(png).decode()
+
+    client = TestClient(main.app)
+    resp = client.post(f"/render/{job_id}", json={"lines": [_RENDER_WORDS], "background": b64})
+    assert resp.status_code == 200
+    assert seen["bg_suffix"] == ".png"      # staged with the data-URL's type
+    assert seen["bg_bytes"] == png          # decoded faithfully
+
+
+def test_render_job_rejects_oversize_background(tmp_path, monkeypatch):
+    # O1: a background past MAX_BG_IMAGE_MB is a 400 before any render.
+    import base64
+
+    monkeypatch.setattr(main, "MAX_BG_IMAGE_MB", 1)
+    job_id = _park_instrumental(tmp_path, monkeypatch)
+    big = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * (2 * 1024 * 1024)).decode()
+    client = TestClient(main.app)
+    resp = client.post(f"/render/{job_id}", json={"lines": [_RENDER_WORDS], "background": big})
+    assert resp.status_code == 400 and resp.json()["stage"] == "render"
+
+
 def test_render_job_font_allowlist_extends_via_env(tmp_path, monkeypatch):
     monkeypatch.setenv("RENDER_FONTS_EXTRA", "Kanit, Prompt")
     assert "Kanit" in main._allowed_render_fonts()
