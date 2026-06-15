@@ -103,6 +103,22 @@ jobs:
           sed -i "s#<meta name=\"lyricbridge-api-base\" content=\"\" />#<meta name=\"lyricbridge-api-base\" content=\"${PROD_URL}\" />#" web/app.html
           echo "after inject:"; grep lyricbridge-api-base web/app.html
           grep -q "content=\"${PROD_URL}\"" web/app.html || { echo "meta injection failed"; exit 1; }
+      - name: Inject the Google OAuth client id (Phase A)
+        # Public value (it's the JWT `aud`), set as a repo VARIABLE
+        # (Settings → Secrets and variables → Actions → Variables → GOOGLE_CLIENT_ID).
+        # Optional: if unset, the meta stays empty and the player falls back to the
+        # client id /healthz reports (the backend's GOOGLE_CLIENT_ID is the source
+        # of truth for whether login is required), so sign-in still works.
+        env:
+          GCID: ${{ vars.GOOGLE_CLIENT_ID }}
+        run: |
+          if [ -n "$GCID" ]; then
+            sed -i "s#<meta name=\"lyricbridge-google-client-id\" content=\"\" />#<meta name=\"lyricbridge-google-client-id\" content=\"${GCID}\" />#" web/app.html
+            grep -q "content=\"${GCID}\"" web/app.html || { echo "google-client-id injection failed"; exit 1; }
+            echo "injected google-client-id"
+          else
+            echo "GOOGLE_CLIENT_ID repo variable unset — leaving meta empty (player uses /healthz value)"
+          fi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: web }
