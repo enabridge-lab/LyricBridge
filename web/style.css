@@ -334,3 +334,81 @@ body.has-lyrics .tools { display: block; }
   .lyrics { font-size: 1.55rem; }
   .brand h1 { font-size: 1.3rem; }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   Phase S — sing mode (S1 stage, S2 tempo/loop, S3 theme, S4 record)
+   ════════════════════════════════════════════════════════════════ */
+
+/* Collapsible sing-tools panel (matches the edit-tools look) */
+.sing-tools { margin-top: 1rem; }
+.sing-tools > summary {
+  cursor: pointer; list-style: none; color: var(--accent); font-weight: 600;
+  padding: .55rem .9rem; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; box-shadow: var(--shadow);
+}
+.sing-tools > summary::-webkit-details-marker { display: none; }
+.sing-body {
+  margin-top: .7rem; padding: .9rem; background: var(--panel2);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  display: grid; gap: .8rem;
+}
+.sing-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.sing-row label, .sing-label { font-size: .9rem; }
+.sing-val { font-size: .85rem; color: var(--dim); min-width: 3.5rem; }
+.sing-row button, .sing-tools .sing-row select {
+  font: inherit; padding: .4rem .7rem; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel);
+  color: var(--text); cursor: pointer;
+}
+.sing-row button:hover { border-color: var(--accent); }
+#stageBtn, #recordBtn { font-weight: 600; }
+.sing-privacy { margin: 0; font-size: .8rem; color: var(--dim); }
+.sing-privacy .en { display: inline; }
+
+/* S3 — on-screen lyric size + theme (CSS vars set inline by player.js) */
+.stage { background: var(--player-bg, transparent); border-radius: var(--radius); }
+.lyrics .word { color: var(--player-text, inherit); }
+body.psize-sm .lyrics { font-size: 1.3rem; }
+body.psize-md .lyrics { font-size: 1.8rem; }
+body.psize-lg .lyrics { font-size: 2.4rem; }
+body.psize-xl .lyrics { font-size: 3rem; }
+
+/* S1 — stage mode: big type, minimal chrome. Works WITHOUT the Fullscreen API
+   (iOS Safari), since it's purely the body.stage-mode class. */
+body.stage-mode { background: var(--player-bg, var(--bg)); }
+body.stage-mode .app-header,
+body.stage-mode .oneup,
+body.stage-mode .manual,
+body.stage-mode .tools,
+body.stage-mode .sync-badge,
+body.stage-mode .privacy-note { display: none; }
+body.stage-mode main { max-width: 100%; padding: 1rem; }
+body.stage-mode .lyrics {
+  font-size: clamp(2rem, 7vw, 4rem); text-align: center; line-height: 1.4;
+}
+
+/* S1 — word-fill sweep: a translucent highlight grows left→right across the
+   active word as it's sung, driven by the --wprog var player.js sets per frame. */
+body.stage-mode .word.active {
+  background: linear-gradient(90deg,
+    rgba(255, 95, 162, .35) calc(var(--wprog, 0) * 100%), transparent 0);
+  border-radius: 6px;
+}
+
+/* S1 — 3-2-1 countdown overlay before a verse entrance */
+#countdownOverlay {
+  position: fixed; inset: 0; z-index: 60; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26vw; font-weight: 800; color: var(--active);
+  background: rgba(75, 67, 100, .25); text-shadow: 0 6px 24px rgba(0, 0, 0, .25);
+}
+#countdownOverlay[hidden] { display: none; }
+#countdownOverlay.pulse { animation: cd-pop .9s ease-out; }
+@keyframes cd-pop {
+  from { transform: scale(.5); opacity: .15; }
+  60%  { opacity: 1; }
+  to   { transform: scale(1.15); opacity: .9; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #countdownOverlay.pulse { animation: none; }
+}

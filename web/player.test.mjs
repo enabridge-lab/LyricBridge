@@ -29,6 +29,12 @@ import {
   loadJobRef,
   clearJobRef,
   defaultApiBase,
+  wordProgress,
+  verseCountdown,
+  clampPlaybackRate,
+  loopedTime,
+  sanitizePlayerTheme,
+  preferredRecorderMime,
 } from "./player.js";
 
 // D4: backend URL resolution — meta override for hosted build, localhost for self-host.
@@ -509,4 +515,62 @@ test("buildModel assigns a contiguous flat index across all line words", () => {
   assert.equal(m.lines.length, 2);
   assert.equal(m.lines[0].words[0]._i, 0);
   assert.equal(m.lines[1].words[0]._i, 1);
+});
+
+// ── Phase S: sing-mode pure helpers ────────────────────────────────────────
+test("wordProgress clamps 0..1 and survives tiny/zero durations", () => {
+  const w = { start: 10, end: 12 };
+  assert.equal(wordProgress(w, 9), 0);      // before
+  assert.equal(wordProgress(w, 11), 0.5);   // halfway
+  assert.equal(wordProgress(w, 99), 1);     // after -> clamped
+  assert.equal(wordProgress({ start: 5, end: 5 }, 5), 0); // zero dur -> no NaN
+  assert.equal(wordProgress(null, 1), 0);
+});
+
+test("verseCountdown shows 3-2-1 only before a post-silence verse entrance", () => {
+  // word at t=10 follows a long silence (prevEnd 0) -> verse entrance
+  const words = [{ start: 10, end: 11 }, { start: 11, end: 12 }];
+  assert.equal(verseCountdown(words, 7.2), 3);   // 2.8s away -> ceil 3
+  assert.equal(verseCountdown(words, 8.5), 2);   // 1.5s away
+  assert.equal(verseCountdown(words, 9.5), 1);   // 0.5s away
+  assert.equal(verseCountdown(words, 5), null);  // >lead (3s) away
+  assert.equal(verseCountdown(words, 10.5), null); // already past the entrance
+  // a word with only a small gap before it is NOT a verse entrance
+  const tight = [{ start: 0, end: 1 }, { start: 1.2, end: 2 }];
+  assert.equal(verseCountdown(tight, 0.5), null);
+  assert.equal(verseCountdown([], 1), null);
+});
+
+test("clampPlaybackRate keeps 0.5..1.5 and defaults junk to 1", () => {
+  assert.equal(clampPlaybackRate(1), 1);
+  assert.equal(clampPlaybackRate(0.5), 0.5);
+  assert.equal(clampPlaybackRate(0.1), 0.5);   // floor
+  assert.equal(clampPlaybackRate(3), 1.5);     // ceil
+  assert.equal(clampPlaybackRate("0.75"), 0.75);
+  assert.equal(clampPlaybackRate("fast"), 1);  // NaN -> 1
+});
+
+test("loopedTime jumps back to A only past B, ignores invalid regions", () => {
+  assert.equal(loopedTime(5, 2, 8), 5);    // inside region -> unchanged
+  assert.equal(loopedTime(9, 2, 8), 2);    // past B -> back to A
+  assert.equal(loopedTime(9, null, 8), 9); // no A -> off
+  assert.equal(loopedTime(9, 2, null), 9); // no B -> off
+  assert.equal(loopedTime(9, 8, 2), 9);    // B<=A invalid -> ignored
+});
+
+test("sanitizePlayerTheme validates size + hex colours, never throws", () => {
+  assert.deepEqual(sanitizePlayerTheme({ size: "lg", text: "#112233", bg: "#ffffff" }),
+    { size: "lg", text: "#112233", bg: "#ffffff" });
+  assert.deepEqual(sanitizePlayerTheme({ size: "huge", text: "red", bg: "#GGG" }),
+    { size: "md", text: null, bg: null }); // unknown size -> md; bad colours -> null
+  assert.deepEqual(sanitizePlayerTheme(null), { size: "md", text: null, bg: null });
+  assert.deepEqual(sanitizePlayerTheme("x"), { size: "md", text: null, bg: null });
+});
+
+test("preferredRecorderMime picks the first supported, else empty string", () => {
+  assert.equal(preferredRecorderMime((m) => m === "audio/webm"), "audio/webm");
+  assert.equal(preferredRecorderMime(() => false), ""); // none supported -> browser default
+  assert.equal(preferredRecorderMime(undefined), "");   // no API -> ""
+  assert.equal(preferredRecorderMime((m) => m === "audio/mp4",
+    ["audio/ogg", "audio/mp4"]), "audio/mp4");           // custom prefs
 });

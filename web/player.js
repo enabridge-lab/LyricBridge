@@ -322,6 +322,69 @@ export function stageLabel(stage) {
   return m[stage] || { th: "กำลังประมวลผล…", en: "Processing", step: 0 };
 }
 
+// --- Phase S: sing-mode pure helpers (DOM-free, unit-tested) ---------------
+
+// S1: fraction 0..1 of a word elapsed at time t — drives the CSS word-fill
+// sweep (--wprog). Clamped; safe on zero/negative durations.
+export function wordProgress(word, t) {
+  if (!word) return 0;
+  const dur = Math.max(0.05, word.end - word.start);
+  return Math.min(1, Math.max(0, (t - word.start) / dur));
+}
+
+// S1: should a 3-2-1 countdown show now? Returns 3|2|1 before a "verse
+// entrance" (a word whose start follows a silent gap >= minGap), once the
+// playhead is within `lead` seconds of it; else null. Pure (no DOM/audio).
+export function verseCountdown(words, t, { minGap = 3.5, lead = 3 } = {}) {
+  if (!words || !words.length) return null;
+  let nx = -1;
+  for (let i = 0; i < words.length; i++) {
+    if (words[i].start > t) { nx = i; break; }
+  }
+  if (nx === -1) return null;
+  const prevEnd = nx > 0 ? words[nx - 1].end : 0;
+  if (words[nx].start - prevEnd < minGap) return null; // not a verse entrance
+  const until = words[nx].start - t;
+  if (until <= 0 || until > lead) return null;
+  return Math.min(3, Math.max(1, Math.ceil(until)));
+}
+
+// S2: clamp a playback rate to a sane practice range (default 1 on junk).
+export function clampPlaybackRate(r) {
+  const n = Number(r);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(1.5, Math.max(0.5, n));
+}
+
+// S2: A/B loop — given the current time and an optional [a,b] region, return
+// the time to seek to (a) once we've passed b, else the unchanged time. Pure.
+export function loopedTime(t, a, b) {
+  if (a == null || b == null) return t;
+  if (b <= a) return t;                  // invalid region -> ignore
+  return t > b ? a : t;
+}
+
+// S3: validate a stored player display theme into safe applied values. Unknown
+// sizes fall back to "md"; non-#rrggbb colours drop to null (CSS default holds).
+export function sanitizePlayerTheme(raw) {
+  const t = raw && typeof raw === "object" ? raw : {};
+  const size = ["sm", "md", "lg", "xl"].includes(t.size) ? t.size : "md";
+  const hex = (v) => (typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : null);
+  return { size, text: hex(t.text), bg: hex(t.bg) };
+}
+
+// S4: pick the best-supported MediaRecorder mime from a preference list.
+// `isSupported` is injectable (MediaRecorder.isTypeSupported) for testing;
+// "" means "let the browser choose its default".
+export function preferredRecorderMime(
+  isSupported,
+  prefs = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"]
+) {
+  if (typeof isSupported !== "function") return "";
+  for (const m of prefs) { if (isSupported(m)) return m; }
+  return "";
+}
+
 // Pull a "{stage}: {error}" message out of a failed JSON response body.
 async function _serverError(res) {
   let detail = `HTTP ${res.status}`;
@@ -373,6 +436,13 @@ function init() {
     vocalVolume: $("vocalVolume"),
     vocalVolumeVal: $("vocalVolumeVal"),
     vocalSliderRow: $("vocalSliderRow"),
+    // Phase S — sing mode (all optional; guarded so headless/old markup works)
+    stageBtn: $("stageBtn"),                 // S1 fullscreen "stage"
+    tempo: $("tempo"), tempoVal: $("tempoVal"),       // S2 playback speed
+    loopA: $("loopA"), loopB: $("loopB"), loopClear: $("loopClear"), // S2 A/B loop
+    loopState: $("loopState"),
+    themeSize: $("themeSize"), themeText: $("themeText"), themeBg: $("themeBg"), // S3
+    recordBtn: $("recordBtn"), recordState: $("recordState"),         // S4
   };
 
   // D4: on a hosted build the meta carries the Modal URL — pre-fill the (still
@@ -417,6 +487,14 @@ function init() {
   let vocalGuideVol = Number(localStorage.getItem("vocalGuideVol") ?? "") || 0.3;
   // Constant sync offset (ms), persisted per browser. + = lyrics lead the audio.
   let syncOffsetMs = Number(localStorage.getItem("syncOffsetMs")) || 0;
+  // Phase S state
+  let stageMode = false;          // S1 fullscreen "stage" big-type mode
+  let loopA = null, loopB = null; // S2 A/B practice loop (seconds)
+  let countdownEl = null;         // S1 lazily-created 3-2-1 overlay
+  let lastCountdown = null;       // avoid re-touching the DOM every frame
+  // S4 recording graph (created lazily on the user's Record gesture)
+  let audioCtx = null, micStream = null, mediaRecorder = null,
+      recChunks = [], mediaElSrc = null;
 
   // --- sync offset slider (§3) ---
   if (els.syncOffset) {
@@ -517,6 +595,8 @@ function init() {
       ? blobOrUrl
       : URL.createObjectURL(blobOrUrl);
     vocalAudio.volume = vocalGuideVol;
+    // S2: a guide loaded after tempo was changed must match the playback rate.
+    if (els.tempo) applyRate(els.tempo.value);
     _wireVocalSync();
     if (els.vocalGuidePanel) {
       els.vocalGuidePanel.hidden = false;
@@ -895,6 +975,157 @@ function init() {
     });
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // Phase S — sing mode (S1 stage, S2 tempo/loop, S3 theme, S4 record)
+  // ════════════════════════════════════════════════════════════════
+
+  // S1: fullscreen "stage". requestFullscreen needs a user gesture; iOS Safari
+  // lacks element fullscreen, so the .stage-mode body class also drives a
+  // CSS-only full-viewport fallback (big type) regardless of the FS API.
+  function setStageMode(on) {
+    stageMode = on;
+    document.body.classList.toggle("stage-mode", on);
+    if (els.stageBtn) els.stageBtn.setAttribute("aria-pressed", String(on));
+    if (!on) {
+      updateCountdown(null);
+      if (wordSpans[lastActive]) wordSpans[lastActive].style.removeProperty("--wprog");
+    }
+  }
+  els.stageBtn?.addEventListener("click", async () => {
+    const entering = !stageMode;
+    setStageMode(entering);
+    try {
+      if (entering && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      } else if (!entering && document.fullscreenElement && document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    } catch { /* FS denied/unsupported — CSS fallback still applies */ }
+  });
+  // Leaving fullscreen via Esc/system gesture should drop stage mode too.
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement && stageMode) setStageMode(false);
+  });
+
+  // S2: tempo (slow-to-practice). Keep the vocal guide in lockstep + preserve
+  // pitch across vendor prefixes so slowing down doesn't chipmunk the audio.
+  function applyRate(r) {
+    const rate = clampPlaybackRate(r);
+    for (const a of [els.audio, vocalAudio]) {
+      if (!a) continue;
+      a.preservesPitch = true;
+      a.mozPreservesPitch = true;
+      a.webkitPreservesPitch = true;
+      a.playbackRate = rate;
+    }
+    if (els.tempoVal) els.tempoVal.textContent = rate.toFixed(2) + "×";
+    return rate;
+  }
+  els.tempo?.addEventListener("input", (e) => applyRate(e.target.value));
+
+  // S2: A/B practice loop. "Set A"/"Set B" stamp the playhead; loop enforced in
+  // highlight() via loopedTime. Clear removes it.
+  function refreshLoopState() {
+    if (!els.loopState) return;
+    const f = (s) => (s == null ? "—" : s.toFixed(1) + "s");
+    els.loopState.textContent = `A ${f(loopA)} · B ${f(loopB)}`;
+  }
+  els.loopA?.addEventListener("click", () => {
+    loopA = els.audio.currentTime;
+    if (loopB != null && loopB <= loopA) loopB = null; // keep region valid
+    refreshLoopState();
+  });
+  els.loopB?.addEventListener("click", () => {
+    const t = els.audio.currentTime;
+    if (loopA == null || t <= loopA) { setStatus("ตั้ง A ก่อน แล้วเล่นต่อจึงตั้ง B · Set A first, then B later", "busy"); return; }
+    loopB = t;
+    refreshLoopState();
+  });
+  els.loopClear?.addEventListener("click", () => { loopA = loopB = null; refreshLoopState(); });
+  refreshLoopState();
+
+  // S3: on-screen player theme (distinct from F8's exported-video style). Body
+  // classes + CSS vars, persisted in localStorage "playerTheme".
+  function applyPlayerTheme(theme) {
+    const t = sanitizePlayerTheme(theme);
+    document.body.classList.remove("psize-sm", "psize-md", "psize-lg", "psize-xl");
+    document.body.classList.add("psize-" + t.size);
+    document.body.style.setProperty("--player-text", t.text || "");
+    document.body.style.setProperty("--player-bg", t.bg || "");
+    if (els.themeSize) els.themeSize.value = t.size;
+    if (els.themeText && t.text) els.themeText.value = t.text;
+    if (els.themeBg && t.bg) els.themeBg.value = t.bg;
+    return t;
+  }
+  function saveTheme() {
+    const t = {
+      size: els.themeSize?.value,
+      text: els.themeText?.value,
+      bg: els.themeBg?.value,
+    };
+    const clean = applyPlayerTheme(t);
+    localStorage.setItem("playerTheme", JSON.stringify(clean));
+  }
+  els.themeSize?.addEventListener("change", saveTheme);
+  els.themeText?.addEventListener("input", saveTheme);
+  els.themeBg?.addEventListener("input", saveTheme);
+  try {
+    applyPlayerTheme(JSON.parse(localStorage.getItem("playerTheme") || "null"));
+  } catch { applyPlayerTheme(null); }
+
+  // S4: record your own cover, FULLY CLIENT-SIDE. The recording never leaves the
+  // browser — mic + instrumental are mixed via Web Audio into a MediaRecorder
+  // and downloaded locally. No upload, no server. AudioContext is created on the
+  // Record gesture (autoplay policy); once els.audio is routed through a
+  // MediaElementSource it only plays via WebAudio, so we connect it to
+  // ctx.destination or the user would hear nothing.
+  function setRecState(msg, kind) {
+    if (els.recordState) els.recordState.textContent = msg || "";
+    if (msg) setStatus(msg, kind);
+  }
+  async function startRecording() {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    await audioCtx.resume();
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mic = audioCtx.createMediaStreamSource(micStream);
+    if (!mediaElSrc) {
+      // createMediaElementSource throws if called twice on one element → guard.
+      mediaElSrc = audioCtx.createMediaElementSource(els.audio);
+      mediaElSrc.connect(audioCtx.destination); // keep the instrumental audible
+    }
+    const mixDest = audioCtx.createMediaStreamDestination();
+    mic.connect(mixDest);
+    mediaElSrc.connect(mixDest);
+    const mime = preferredRecorderMime(window.MediaRecorder?.isTypeSupported);
+    mediaRecorder = new MediaRecorder(mixDest.stream, mime ? { mimeType: mime } : undefined);
+    recChunks = [];
+    mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      const type = mediaRecorder.mimeType || "audio/webm";
+      const ext = type.includes("mp4") || type.includes("mpeg") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+      download(`my-cover.${ext}`, new Blob(recChunks, { type }));
+      micStream?.getTracks().forEach((tr) => tr.stop());
+      micStream = null;
+      setRecState("บันทึกเสร็จ ดาวน์โหลดแล้ว · Saved your cover", "ok");
+    };
+    mediaRecorder.start();
+    if (els.recordBtn) els.recordBtn.textContent = "⏹ หยุดอัด · Stop";
+    setRecState("กำลังอัด… ใส่หูฟังกันเสียงสะท้อน · Recording — use headphones", "busy");
+    els.audio.play().catch(() => {/* user can press play */});
+  }
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+    if (els.recordBtn) els.recordBtn.textContent = "⏺ อัดเสียงร้อง · Record";
+  }
+  els.recordBtn?.addEventListener("click", async () => {
+    if (mediaRecorder && mediaRecorder.state === "recording") { stopRecording(); return; }
+    try {
+      await startRecording();
+    } catch (err) {
+      setRecState("อัดเสียงไม่ได้ (ขอสิทธิ์ไมค์ไม่สำเร็จ?) · Can't record — " + err.message, "error");
+    }
+  });
+
   els.audioFile.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1026,9 +1257,18 @@ function init() {
 
   function highlight() {
     if (model.words.length) {
-      const i = activeWordIndex(model.words, withOffset(els.audio.currentTime, syncOffsetMs));
+      // S2: A/B loop — jump back to A once we've played past B (while playing).
+      if (loopA != null && loopB != null && !els.audio.paused) {
+        const jumped = loopedTime(els.audio.currentTime, loopA, loopB);
+        if (jumped !== els.audio.currentTime) els.audio.currentTime = jumped;
+      }
+      const t = withOffset(els.audio.currentTime, syncOffsetMs);
+      const i = activeWordIndex(model.words, t);
       if (i !== lastActive) {
-        if (wordSpans[lastActive]) wordSpans[lastActive].classList.remove("active");
+        if (wordSpans[lastActive]) {
+          wordSpans[lastActive].classList.remove("active");
+          wordSpans[lastActive].style.removeProperty("--wprog");
+        }
         const span = wordSpans[i];
         if (span) {
           span.classList.add("active");
@@ -1039,8 +1279,33 @@ function init() {
         }
         lastActive = i;
       }
+      // S1: word-fill sweep on the active span (cheap CSS var, stage mode only).
+      if (stageMode && wordSpans[i]) {
+        wordSpans[i].style.setProperty("--wprog", wordProgress(model.words[i], t).toFixed(3));
+      }
+      // S1: 3-2-1 countdown overlay before a verse entrance.
+      updateCountdown(stageMode && !els.audio.paused ? verseCountdown(model.words, t) : null);
     }
     requestAnimationFrame(highlight);
+  }
+
+  // S1: show/update/hide the countdown overlay. Touches the DOM only on change.
+  function updateCountdown(n) {
+    if (n === lastCountdown) return;
+    lastCountdown = n;
+    if (n == null) { if (countdownEl) countdownEl.hidden = true; return; }
+    if (!countdownEl) {
+      countdownEl = document.createElement("div");
+      countdownEl.id = "countdownOverlay";
+      countdownEl.setAttribute("aria-hidden", "true");
+      document.body.appendChild(countdownEl);
+    }
+    countdownEl.textContent = String(n);
+    countdownEl.hidden = false;
+    // restart the pop animation
+    countdownEl.classList.remove("pulse");
+    void countdownEl.offsetWidth;
+    countdownEl.classList.add("pulse");
   }
 
   function setStatus(msg, kind) {
