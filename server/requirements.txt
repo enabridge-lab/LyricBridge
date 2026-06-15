@@ -1,8 +1,14 @@
 # --- M0: Cloud ASR service (vocal wav -> LRC/ASS) ---
 # Pinned loosely; correctness-before-speed. CPU path must always work.
 
-fastapi
-uvicorn[standard]
+# Pin the web framework so a clean CI resolve is reproducible. Unpinned, pip
+# pulled starlette >=1.3, whose TestClient dropped the genuine `httpx` backend
+# and demands a separate package — a supply-chain hazard in a credentialed CI.
+# These are the versions the suite is developed/tested against; starlette 1.2.x
+# uses real httpx (installed as a test-only dep in the deploy workflow).
+fastapi==0.136.3
+starlette==1.2.1
+uvicorn[standard]==0.49.0
 python-multipart           # multipart/form-data file upload
 
 faster-whisper             # CPU/GPU ASR with int8 quantization (cheap server)
