@@ -648,6 +648,30 @@ def test_is_valid_background_image_accepts_probed_image(tmp_path, monkeypatch):
     assert render.is_valid_background_image(img) is True
 
 
+def test_is_valid_background_image_rejects_decompression_bomb(tmp_path, monkeypatch):
+    # O1 security: a tiny file declaring huge dimensions (decompression bomb) is
+    # rejected on the declared width/height BEFORE ffmpeg allocates for it.
+    from app import render
+
+    img = tmp_path / "bomb.png"
+    img.write_bytes(b"\x89PNG\r\n\x1a\n")
+    monkeypatch.setattr(
+        render.subprocess, "run",
+        lambda *a, **k: type("R", (), {
+            "stdout": '{"streams":[{"codec_name":"png","width":50000,"height":50000}]}'})(),
+    )
+    assert render.is_valid_background_image(img) is False
+    # exactly at the cap is allowed; one over is not
+    monkeypatch.setattr(render, "MAX_BG_IMAGE_DIM", 4096)
+    for dims, ok in (((4096, 4096), True), ((4097, 100), False), ((100, 4097), False)):
+        monkeypatch.setattr(
+            render.subprocess, "run",
+            lambda *a, _d=dims, **k: type("R", (), {
+                "stdout": f'{{"streams":[{{"codec_name":"png","width":{_d[0]},"height":{_d[1]}}}]}}'})(),
+        )
+        assert render.is_valid_background_image(img) is ok
+
+
 def test_render_video_rejects_invalid_background(tmp_path, monkeypatch):
     # O1: render_video refuses an invalid background before spending ffmpeg.
     import pytest

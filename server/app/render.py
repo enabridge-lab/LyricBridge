@@ -41,14 +41,20 @@ STEM_BITRATE = os.getenv("STEM_BITRATE", "128k")
 # reach ffmpeg. Keep to still-image codecs (no animated/video inputs).
 _BG_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 _BG_IMAGE_CODECS = {"mjpeg", "png", "webp", "bmp"}
+# Cap the DECLARED pixel dimensions: a tiny "decompression bomb" file can declare
+# e.g. 50000x50000 and make ffmpeg try to allocate ~7 GB before failing. The
+# canvas is only RENDER_WIDTH×HEIGHT (1280×720), so any sane source ≤ 4096² covers
+# it with room to spare. Reject larger so we never hand ffmpeg a bomb.
+MAX_BG_IMAGE_DIM = int(os.getenv("MAX_BG_IMAGE_DIM", "4096"))
 
 
 def is_valid_background_image(path: str | Path) -> bool:
-    """O1: True only if `path` is a real still image (extension + ffprobe codec).
+    """O1: True only if `path` is a real, sanely-sized still image.
 
-    Defends the ffmpeg input: we never pass a raw user string into the filter
-    graph, and we reject anything that isn't a known image codec BEFORE spending
-    the render. Returns False (never raises) on any probe failure."""
+    Checks extension + ffprobe codec + DECLARED dimensions (≤ MAX_BG_IMAGE_DIM) so
+    a renamed/forged file or a decompression bomb can't reach ffmpeg. We never pass
+    a raw user string into the filter graph. Returns False (never raises) on any
+    probe failure."""
     p = Path(path)
     if p.suffix.lower() not in _BG_IMAGE_EXT:
         return False
@@ -63,7 +69,12 @@ def is_valid_background_image(path: str | Path) -> bool:
         if not streams:
             return False
         s = streams[0]
-        return s.get("codec_name") in _BG_IMAGE_CODECS and int(s.get("width") or 0) > 0
+        if s.get("codec_name") not in _BG_IMAGE_CODECS:
+            return False
+        w = int(s.get("width") or 0)
+        h = int(s.get("height") or 0)
+        # Bound BOTH dimensions: >0 (real image) and ≤ cap (no bomb).
+        return 0 < w <= MAX_BG_IMAGE_DIM and 0 < h <= MAX_BG_IMAGE_DIM
     except Exception:  # noqa: BLE001 - probe failure -> reject
         return False
 
