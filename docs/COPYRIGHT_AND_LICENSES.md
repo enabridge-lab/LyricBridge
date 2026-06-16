@@ -52,3 +52,17 @@ credit them per their terms:
 
 > If you swap `ASR_MODEL` to a Thai-tuned model, verify that model's license
 > covers your use case (some research models restrict commercial use).
+
+## Bundled demo tracks (`web/demo/`)
+
+The 1–2 sample songs the landing page plays (Phase D+) are **copyright-safe**:
+
+| Track | Source | Rights |
+|---|---|---|
+| `demo1` — "หมายเลขหนึ่ง" | Generated with Suno AI (paid plan); original Thai lyrics by the project owner | Owner holds the commercial-use license to the audio; lyrics authored by owner |
+| `demo2` — "เก่า" | Generated with Suno AI (paid plan); original Thai lyrics by the project owner | Owner holds the commercial-use license to the audio; lyrics authored by owner |
+
+These are deliberately **not** commercial recordings — the repo never ships a
+copyrighted song. If you fork this project, replace the demo assets with audio
+**you** have the right to distribute (your own recording, CC-licensed, or
+AI-generated under a plan that grants you commercial rights).

@@ -1,0 +1,1411 @@
+{
+  "language": "th",
+  "duration_sec": 217.0,
+  "words": [
+    {
+      "text": "ตื่น",
+      "start": 20.111,
+      "end": 20.371,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "tuen"
+    },
+    {
+      "text": "มา",
+      "start": 20.371,
+      "end": 20.611,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "ma"
+    },
+    {
+      "text": "เช้านี้",
+      "start": 20.611,
+      "end": 21.192,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "chaoni"
+    },
+    {
+      "text": "ฟ้า",
+      "start": 22.934,
+      "end": 23.455,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "fa"
+    },
+    {
+      "text": "ก็",
+      "start": 23.455,
+      "end": 23.515,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "k็"
+    },
+    {
+      "text": "ยัง",
+      "start": 23.956,
+      "end": 24.436,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "yang"
+    },
+    {
+      "text": "สดใส",
+      "start": 24.436,
+      "end": 25.017,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "sadasai"
+    },
+    {
+      "text": "เพราะ",
+      "start": 28.242,
+      "end": 28.462,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "pheraะ"
+    },
+    {
+      "text": "มี",
+      "start": 28.462,
+      "end": 28.582,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "mi"
+    },
+    {
+      "text": "เธอ",
+      "start": 28.762,
+      "end": 28.863,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "อยู่",
+      "start": 28.863,
+      "end": 29.363,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "yu"
+    },
+    {
+      "text": "ใน",
+      "start": 31.026,
+      "end": 31.306,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "nai"
+    },
+    {
+      "text": "ใจ",
+      "start": 31.306,
+      "end": 31.486,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "chai"
+    },
+    {
+      "text": "เพียง",
+      "start": 31.486,
+      "end": 31.827,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "phiang"
+    },
+    {
+      "text": "ฉัน",
+      "start": 31.827,
+      "end": 32.347,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "chan"
+    },
+    {
+      "text": "ทุกวัน",
+      "start": 32.347,
+      "end": 36.153,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "thukwan"
+    },
+    {
+      "text": "รอยยิ้ม",
+      "start": 36.193,
+      "end": 36.934,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "roiyim"
+    },
+    {
+      "text": "ของ",
+      "start": 36.934,
+      "end": 37.194,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "khong"
+    },
+    {
+      "text": "เธอ",
+      "start": 37.194,
+      "end": 37.294,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "มัน",
+      "start": 39.195,
+      "end": 39.455,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "man"
+    },
+    {
+      "text": "ทำให้",
+      "start": 39.455,
+      "end": 39.756,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "thamhai"
+    },
+    {
+      "text": "ฉัน",
+      "start": 39.936,
+      "end": 40.456,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "chan"
+    },
+    {
+      "text": "เต้นรำ",
+      "start": 40.456,
+      "end": 41.216,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "tenram"
+    },
+    {
+      "text": "ไม่ต้องการ",
+      "start": 44.297,
+      "end": 45.097,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "mataingkan"
+    },
+    {
+      "text": "อะไร",
+      "start": 45.097,
+      "end": 45.717,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "arai"
+    },
+    {
+      "text": "ขอ",
+      "start": 47.358,
+      "end": 47.798,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "kho"
+    },
+    {
+      "text": "แค่",
+      "start": 47.798,
+      "end": 47.858,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "khae"
+    },
+    {
+      "text": "เธอ",
+      "start": 48.078,
+      "end": 48.578,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "เท่านั้น",
+      "start": 48.578,
+      "end": 49.638,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "thaonan"
+    },
+    {
+      "text": "พอ",
+      "start": 49.638,
+      "end": 50.438,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "pho"
+    },
+    {
+      "text": "และ",
+      "start": 52.159,
+      "end": 52.419,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "lae"
+    },
+    {
+      "text": "ทุกๆ",
+      "start": 52.419,
+      "end": 52.579,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "thuk"
+    },
+    {
+      "text": "ครั้ง",
+      "start": 52.679,
+      "end": 52.939,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "khrang"
+    },
+    {
+      "text": "ที่",
+      "start": 52.959,
+      "end": 52.999,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "thi"
+    },
+    {
+      "text": "เธอ",
+      "start": 53.139,
+      "end": 53.279,
+      "confidence": 0.929,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "สมอง",
+      "start": 55.96,
+      "end": 56.741,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "samong"
+    },
+    {
+      "text": "มา",
+      "start": 56.741,
+      "end": 58.462,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "ma"
+    },
+    {
+      "text": "หัวใจ",
+      "start": 60.544,
+      "end": 61.045,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "uachai"
+    },
+    {
+      "text": "ฉัน",
+      "start": 61.045,
+      "end": 61.325,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "chan"
+    },
+    {
+      "text": "มัน",
+      "start": 61.325,
+      "end": 63.848,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "man"
+    },
+    {
+      "text": "ก็",
+      "start": 63.848,
+      "end": 63.888,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "k็"
+    },
+    {
+      "text": "เป็น",
+      "start": 64.088,
+      "end": 64.608,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "pen"
+    },
+    {
+      "text": "แรง",
+      "start": 64.608,
+      "end": 64.949,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "raeng"
+    },
+    {
+      "text": "เกินไป",
+      "start": 64.949,
+      "end": 67.871,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "koenpai"
+    },
+    {
+      "text": "เธอ",
+      "start": 68.152,
+      "end": 68.452,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "คือ",
+      "start": 68.452,
+      "end": 68.672,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "khue"
+    },
+    {
+      "text": "ไม้",
+      "start": 68.672,
+      "end": 68.732,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "mai"
+    },
+    {
+      "text": "เล็ก",
+      "start": 69.053,
+      "end": 69.453,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "lek"
+    },
+    {
+      "text": "หนึ่ง",
+      "start": 69.453,
+      "end": 70.454,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "nueng"
+    },
+    {
+      "text": "คนเดียว",
+      "start": 70.454,
+      "end": 71.075,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "khanadiao"
+    },
+    {
+      "text": "ใน",
+      "start": 71.075,
+      "end": 71.115,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "nai"
+    },
+    {
+      "text": "ใจ",
+      "start": 71.115,
+      "end": 71.355,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "chai"
+    },
+    {
+      "text": "ไม่",
+      "start": 71.375,
+      "end": 71.415,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "mai"
+    },
+    {
+      "text": "มี",
+      "start": 71.435,
+      "end": 71.455,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "mi"
+    },
+    {
+      "text": "ใคร",
+      "start": 71.475,
+      "end": 74.258,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "khain"
+    },
+    {
+      "text": "แทน",
+      "start": 74.258,
+      "end": 74.778,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "thaen"
+    },
+    {
+      "text": "เธอ",
+      "start": 74.778,
+      "end": 75.339,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "ได้",
+      "start": 75.339,
+      "end": 75.399,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "dai"
+    },
+    {
+      "text": "ไม่",
+      "start": 75.799,
+      "end": 75.859,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "mai"
+    },
+    {
+      "text": "ว่า",
+      "start": 76.32,
+      "end": 76.84,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "wa"
+    },
+    {
+      "text": "นาน",
+      "start": 76.84,
+      "end": 77.2,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "nan"
+    },
+    {
+      "text": "เท่าไหร่",
+      "start": 77.2,
+      "end": 77.681,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "thaorai"
+    },
+    {
+      "text": "จับมือ",
+      "start": 78.602,
+      "end": 79.122,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "chapmue"
+    },
+    {
+      "text": "ฉัน",
+      "start": 79.122,
+      "end": 79.563,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "chan"
+    },
+    {
+      "text": "ไว้",
+      "start": 79.563,
+      "end": 79.683,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "wai"
+    },
+    {
+      "text": "แล้วไป",
+      "start": 80.364,
+      "end": 81.304,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "laeopai"
+    },
+    {
+      "text": "ด้วยกัน",
+      "start": 81.304,
+      "end": 81.905,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "duaikan"
+    },
+    {
+      "text": "เธอ",
+      "start": 83.406,
+      "end": 84.467,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "คือ",
+      "start": 84.467,
+      "end": 85.168,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "khue"
+    },
+    {
+      "text": "ที่หนึ่ง",
+      "start": 85.168,
+      "end": 86.75,
+      "confidence": 0.869,
+      "interpolated": false,
+      "roman": "thinueng"
+    },
+    {
+      "text": "ตลอดไป",
+      "start": 89.012,
+      "end": 94.339,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "tlotpai"
+    },
+    {
+      "text": "เดิน",
+      "start": 94.359,
+      "end": 94.639,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "doen"
+    },
+    {
+      "text": "ไป",
+      "start": 94.639,
+      "end": 94.879,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "pai"
+    },
+    {
+      "text": "ด้วยกัน",
+      "start": 94.879,
+      "end": 95.38,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "duaikan"
+    },
+    {
+      "text": "ป้าย",
+      "start": 96.161,
+      "end": 96.661,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "pai"
+    },
+    {
+      "text": "แสง",
+      "start": 96.661,
+      "end": 97.182,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "saeng"
+    },
+    {
+      "text": "ดาว",
+      "start": 97.182,
+      "end": 97.522,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "dao"
+    },
+    {
+      "text": "พราว",
+      "start": 97.522,
+      "end": 97.943,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "phrao"
+    },
+    {
+      "text": "ฟ้า",
+      "start": 97.943,
+      "end": 98.263,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "fa"
+    },
+    {
+      "text": "เปิด",
+      "start": 98.423,
+      "end": 98.664,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "poet"
+    },
+    {
+      "text": "เพลง",
+      "start": 98.664,
+      "end": 98.944,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "phenng"
+    },
+    {
+      "text": "เบา",
+      "start": 98.944,
+      "end": 99.304,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "bao"
+    },
+    {
+      "text": "ๆ",
+      "start": 99.304,
+      "end": 99.565,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": null
+    },
+    {
+      "text": "แล้ว",
+      "start": 99.965,
+      "end": 100.245,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "laeo"
+    },
+    {
+      "text": "ยก",
+      "start": 100.245,
+      "end": 100.726,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "yok"
+    },
+    {
+      "text": "ตาม",
+      "start": 100.726,
+      "end": 101.006,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "tam"
+    },
+    {
+      "text": "จังหวะ",
+      "start": 101.006,
+      "end": 101.587,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "changwa"
+    },
+    {
+      "text": "ใจ",
+      "start": 101.587,
+      "end": 102.068,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "chai"
+    },
+    {
+      "text": "ไม่",
+      "start": 102.528,
+      "end": 102.588,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "mai"
+    },
+    {
+      "text": "มี",
+      "start": 102.788,
+      "end": 102.808,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "mi"
+    },
+    {
+      "text": "คำ",
+      "start": 103.029,
+      "end": 103.269,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "kham"
+    },
+    {
+      "text": "ไหนจะ",
+      "start": 103.269,
+      "end": 104.05,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "naicha"
+    },
+    {
+      "text": "บอก",
+      "start": 104.05,
+      "end": 104.531,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "bok"
+    },
+    {
+      "text": "ได้",
+      "start": 104.531,
+      "end": 104.591,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "dai"
+    },
+    {
+      "text": "หมด",
+      "start": 105.051,
+      "end": 105.572,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "mot"
+    },
+    {
+      "text": "ความรู้",
+      "start": 105.572,
+      "end": 106.132,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "khwamru"
+    },
+    {
+      "text": "ซึ่ง",
+      "start": 107.074,
+      "end": 108.615,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "sueng"
+    },
+    {
+      "text": "รู้",
+      "start": 108.615,
+      "end": 108.655,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "ru"
+    },
+    {
+      "text": "รู้",
+      "start": 109.396,
+      "end": 109.436,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "ru"
+    },
+    {
+      "text": "แค่",
+      "start": 109.617,
+      "end": 109.677,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "khae"
+    },
+    {
+      "text": "ว่า",
+      "start": 109.857,
+      "end": 110.097,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "wa"
+    },
+    {
+      "text": "เธอ",
+      "start": 110.097,
+      "end": 110.277,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "ทำให้",
+      "start": 113.441,
+      "end": 113.801,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "thamhai"
+    },
+    {
+      "text": "ฉัน",
+      "start": 113.922,
+      "end": 114.202,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "chan"
+    },
+    {
+      "text": "ยิ้ม",
+      "start": 114.202,
+      "end": 115.984,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "yim"
+    },
+    {
+      "text": "ทุกวัน",
+      "start": 115.984,
+      "end": 116.565,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "thukwan"
+    },
+    {
+      "text": "เธอ",
+      "start": 116.965,
+      "end": 117.266,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "คือ",
+      "start": 117.266,
+      "end": 117.486,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "khue"
+    },
+    {
+      "text": "ไม้",
+      "start": 117.486,
+      "end": 117.566,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "mai"
+    },
+    {
+      "text": "เล็ก",
+      "start": 117.646,
+      "end": 118.287,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "lek"
+    },
+    {
+      "text": "นึง",
+      "start": 118.287,
+      "end": 118.507,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "nueng"
+    },
+    {
+      "text": "คนเดียว",
+      "start": 119.268,
+      "end": 119.929,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "khanadiao"
+    },
+    {
+      "text": "ใน",
+      "start": 119.929,
+      "end": 120.289,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "nai"
+    },
+    {
+      "text": "ใจ",
+      "start": 120.289,
+      "end": 120.349,
+      "confidence": 0.855,
+      "interpolated": false,
+      "roman": "chai"
+    },
+    {
+      "text": "ไม่",
+      "start": 121.57,
+      "end": 121.63,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "mai"
+    },
+    {
+      "text": "มี",
+      "start": 121.971,
+      "end": 122.011,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "mi"
+    },
+    {
+      "text": "ใคร",
+      "start": 122.291,
+      "end": 123.071,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "khain"
+    },
+    {
+      "text": "แทน",
+      "start": 123.071,
+      "end": 123.571,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "thaen"
+    },
+    {
+      "text": "เธอ",
+      "start": 123.571,
+      "end": 124.192,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "ได้",
+      "start": 124.192,
+      "end": 124.252,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "dai"
+    },
+    {
+      "text": "ไม่",
+      "start": 124.592,
+      "end": 124.672,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "mai"
+    },
+    {
+      "text": "ว่า",
+      "start": 125.152,
+      "end": 125.653,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "wa"
+    },
+    {
+      "text": "นาน",
+      "start": 125.653,
+      "end": 126.013,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "nan"
+    },
+    {
+      "text": "เท่าไหร่",
+      "start": 126.013,
+      "end": 126.473,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "thaorai"
+    },
+    {
+      "text": "จับมือ",
+      "start": 127.394,
+      "end": 128.074,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "chapmue"
+    },
+    {
+      "text": "ฉัน",
+      "start": 128.074,
+      "end": 128.194,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "chan"
+    },
+    {
+      "text": "ไว้",
+      "start": 138.58,
+      "end": 138.661,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "wai"
+    },
+    {
+      "text": "แล้วไป",
+      "start": 138.821,
+      "end": 139.621,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "laeopai"
+    },
+    {
+      "text": "โดย",
+      "start": 139.621,
+      "end": 139.681,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "doi"
+    },
+    {
+      "text": "กัน",
+      "start": 139.681,
+      "end": 139.741,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "kan"
+    },
+    {
+      "text": "เพราะ",
+      "start": 139.761,
+      "end": 139.861,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "pheraะ"
+    },
+    {
+      "text": "เธอ",
+      "start": 139.861,
+      "end": 139.921,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "คือ",
+      "start": 139.921,
+      "end": 139.981,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "khue"
+    },
+    {
+      "text": "ที่หนึ่ง",
+      "start": 139.981,
+      "end": 140.141,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "thinueng"
+    },
+    {
+      "text": "ตลอดไป",
+      "start": 140.161,
+      "end": 140.281,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "tlotpai"
+    },
+    {
+      "text": "ตลอดไป",
+      "start": 155.711,
+      "end": 161.994,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "tlotpai"
+    },
+    {
+      "text": "เธอ",
+      "start": 162.475,
+      "end": 162.995,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "คือ",
+      "start": 162.995,
+      "end": 163.776,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "khue"
+    },
+    {
+      "text": "ที่หนึ่ง",
+      "start": 163.776,
+      "end": 164.816,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "thinueng"
+    },
+    {
+      "text": "ของ",
+      "start": 164.816,
+      "end": 165.056,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "khong"
+    },
+    {
+      "text": "ฉัน",
+      "start": 165.056,
+      "end": 165.256,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "chan"
+    },
+    {
+      "text": "เธอ",
+      "start": 169.839,
+      "end": 170.139,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "คือ",
+      "start": 170.139,
+      "end": 170.219,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "khue"
+    },
+    {
+      "text": "ไม้",
+      "start": 170.219,
+      "end": 170.359,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "mai"
+    },
+    {
+      "text": "เล็ก",
+      "start": 170.379,
+      "end": 170.5,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "lek"
+    },
+    {
+      "text": "นึง",
+      "start": 170.5,
+      "end": 170.68,
+      "confidence": 0.914,
+      "interpolated": false,
+      "roman": "nueng"
+    },
+    {
+      "text": "คนเดียว",
+      "start": 172.14,
+      "end": 172.781,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "khanadiao"
+    },
+    {
+      "text": "ใน",
+      "start": 172.781,
+      "end": 173.161,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "nai"
+    },
+    {
+      "text": "ใจ",
+      "start": 173.161,
+      "end": 173.921,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "chai"
+    },
+    {
+      "text": "มี",
+      "start": 174.462,
+      "end": 174.862,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "mi"
+    },
+    {
+      "text": "ใคร",
+      "start": 175.162,
+      "end": 175.942,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "khain"
+    },
+    {
+      "text": "แจ้ง",
+      "start": 175.942,
+      "end": 176.442,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "chaeng"
+    },
+    {
+      "text": "เธอ",
+      "start": 176.442,
+      "end": 177.023,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "ได้",
+      "start": 177.023,
+      "end": 177.083,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "dai"
+    },
+    {
+      "text": "ไม่",
+      "start": 177.483,
+      "end": 177.563,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "mai"
+    },
+    {
+      "text": "ว่า",
+      "start": 178.103,
+      "end": 178.503,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "wa"
+    },
+    {
+      "text": "นาน",
+      "start": 178.503,
+      "end": 178.904,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "nan"
+    },
+    {
+      "text": "เท่าไหร่",
+      "start": 178.904,
+      "end": 187.128,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "thaorai"
+    },
+    {
+      "text": "จะ",
+      "start": 187.188,
+      "end": 187.408,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "cha"
+    },
+    {
+      "text": "มือ",
+      "start": 187.408,
+      "end": 187.528,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "mue"
+    },
+    {
+      "text": "ฉัน",
+      "start": 187.528,
+      "end": 188.148,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "chan"
+    },
+    {
+      "text": "ไว้",
+      "start": 188.148,
+      "end": 188.188,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "wai"
+    },
+    {
+      "text": "แล้วไป",
+      "start": 188.208,
+      "end": 188.328,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "laeopai"
+    },
+    {
+      "text": "ด้วยกัน",
+      "start": 188.328,
+      "end": 188.528,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "duaikan"
+    },
+    {
+      "text": "โอ้",
+      "start": 188.548,
+      "end": 188.588,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "o"
+    },
+    {
+      "text": "เธอ",
+      "start": 188.668,
+      "end": 188.748,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "คือ",
+      "start": 188.748,
+      "end": 188.948,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "khue"
+    },
+    {
+      "text": "ที่หนึ่ง",
+      "start": 188.948,
+      "end": 206.377,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "thinueng"
+    },
+    {
+      "text": "ตลอดไป",
+      "start": 206.397,
+      "end": 206.517,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "tlotpai"
+    },
+    {
+      "text": "ตลอดไป",
+      "start": 206.537,
+      "end": 207.137,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "tlotpai"
+    },
+    {
+      "text": "เธอ",
+      "start": 207.217,
+      "end": 207.717,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "thoe"
+    },
+    {
+      "text": "คือ",
+      "start": 207.717,
+      "end": 208.458,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "khue"
+    },
+    {
+      "text": "ที่หนึ่ง",
+      "start": 208.458,
+      "end": 211.459,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "thinueng"
+    },
+    {
+      "text": "ของ",
+      "start": 211.539,
+      "end": 211.799,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "khong"
+    },
+    {
+      "text": "ฉัน",
+      "start": 211.799,
+      "end": 211.979,
+      "confidence": 0.898,
+      "interpolated": false,
+      "roman": "chan"
+    }
+  ],
+  "lrc": "[00:20.11]ตื่นมาเช้านี้\n[00:22.93]ฟ้าก็ยังสดใส\n[00:28.24]เพราะมีเธออยู่\n[00:31.03]ในใจเพียงฉันทุกวันรอยยิ้มของ\n[00:37.19]เธอ\n[00:39.20]มันทำให้ฉันเต้นรำ\n[00:44.30]ไม่ต้องการอะไร\n[00:47.36]ขอแค่เธอเท่านั้นพอ\n[00:52.16]และทุกๆครั้งที่เธอ\n[00:55.96]สมองมา\n[01:00.54]หัวใจฉันมันก็เป็นแรง\n[01:04.95]เกินไปเธอคือไม้เล็กหนึ่ง\n[01:10.45]คนเดียวในใจไม่มีใครแทนเธอได้\n[01:15.80]ไม่ว่านานเท่าไหร่\n[01:18.60]จับมือฉันไว้แล้วไปด้วยกัน\n[01:23.41]เธอคือที่หนึ่ง\n[01:29.01]ตลอดไปเดินไปด้วยกัน\n[01:36.16]ป้ายแสงดาวพราวฟ้าเปิดเพลงเบาๆ\n[01:39.97]แล้วยกตามจังหวะใจไม่มีคำไหนจะ\n[01:44.05]บอกได้หมดความรู้\n[01:47.07]ซึ่งรู้\n[01:49.40]รู้แค่ว่าเธอ\n[01:53.44]ทำให้ฉันยิ้มทุกวันเธอคือไม้\n[01:57.65]เล็กนึง\n[01:59.27]คนเดียวในใจ\n[02:01.57]ไม่มีใครแทนเธอได้ไม่ว่านาน\n[02:06.01]เท่าไหร่\n[02:07.39]จับมือฉัน\n[02:18.58]ไว้แล้วไปโดยกันเพราะเธอคือ\n[02:19.98]ที่หนึ่งตลอดไป\n[02:35.71]ตลอดไป\n[02:42.47]เธอคือที่หนึ่งของฉัน\n[02:49.84]เธอคือไม้เล็กนึง\n[02:52.14]คนเดียวในใจมีใครแจ้งเธอได้ไม่\n[02:58.10]ว่านาน\n[02:58.90]เท่าไหร่\n[03:07.19]จะมือฉันไว้แล้วไปด้วยกันโอ้เธอ\n[03:08.75]คือ\n[03:08.95]ที่หนึ่ง\n[03:26.40]ตลอดไปตลอดไปเธอคือที่หนึ่งของ\n[03:31.80]ฉัน",
+  "ass": "[Script Info]\nScriptType: v4.00+\nPlayResX: 1280\nPlayResY: 720\nWrapStyle: 2\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Sarabun,48,&H00FFFFFF,&H0000A5FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,3,1,2,40,40,40,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n\nDialogue: 0,0:00:20.11,0:00:21.19,Default,,0,0,0,,{\\k26}ตื่น{\\k24}มา{\\k58}เช้านี้\nDialogue: 0,0:00:22.93,0:00:25.02,Default,,0,0,0,,{\\k52}ฟ้า{\\k6}ก็{\\k44}{\\k48}ยัง{\\k58}สดใส\nDialogue: 0,0:00:28.24,0:00:29.36,Default,,0,0,0,,{\\k22}เพราะ{\\k12}มี{\\k18}{\\k10}เธอ{\\k50}อยู่\nDialogue: 0,0:00:31.03,0:00:37.19,Default,,0,0,0,,{\\k28}ใน{\\k18}ใจ{\\k34}เพียง{\\k52}ฉัน{\\k381}ทุกวัน{\\k4}{\\k74}รอยยิ้ม{\\k26}ของ\nDialogue: 0,0:00:37.19,0:00:37.29,Default,,0,0,0,,{\\k10}เธอ\nDialogue: 0,0:00:39.20,0:00:41.22,Default,,0,0,0,,{\\k26}มัน{\\k30}ทำให้{\\k18}{\\k52}ฉัน{\\k76}เต้นรำ\nDialogue: 0,0:00:44.30,0:00:45.72,Default,,0,0,0,,{\\k80}ไม่ต้องการ{\\k62}อะไร\nDialogue: 0,0:00:47.36,0:00:50.44,Default,,0,0,0,,{\\k44}ขอ{\\k6}แค่{\\k22}{\\k50}เธอ{\\k106}เท่านั้น{\\k80}พอ\nDialogue: 0,0:00:52.16,0:00:53.28,Default,,0,0,0,,{\\k26}และ{\\k16}ทุกๆ{\\k10}{\\k26}ครั้ง{\\k2}{\\k4}ที่{\\k14}{\\k14}เธอ\nDialogue: 0,0:00:55.96,0:00:58.46,Default,,0,0,0,,{\\k78}สมอง{\\k172}มา\nDialogue: 0,0:01:00.54,0:01:04.95,Default,,0,0,0,,{\\k50}หัวใจ{\\k28}ฉัน{\\k252}มัน{\\k4}ก็{\\k20}{\\k52}เป็น{\\k34}แรง\nDialogue: 0,0:01:04.95,0:01:10.45,Default,,0,0,0,,{\\k292}เกินไป{\\k28}{\\k30}เธอ{\\k22}คือ{\\k6}ไม้{\\k32}{\\k40}เล็ก{\\k100}หนึ่ง\nDialogue: 0,0:01:10.45,0:01:15.40,Default,,0,0,0,,{\\k62}คนเดียว{\\k4}ใน{\\k24}ใจ{\\k2}{\\k4}ไม่{\\k2}{\\k2}มี{\\k2}{\\k278}ใคร{\\k52}แทน{\\k56}เธอ{\\k6}ได้\nDialogue: 0,0:01:15.80,0:01:17.68,Default,,0,0,0,,{\\k6}ไม่{\\k46}{\\k52}ว่า{\\k36}นาน{\\k48}เท่าไหร่\nDialogue: 0,0:01:18.60,0:01:21.91,Default,,0,0,0,,{\\k52}จับมือ{\\k44}ฉัน{\\k12}ไว้{\\k68}{\\k94}แล้วไป{\\k60}ด้วยกัน\nDialogue: 0,0:01:23.41,0:01:26.75,Default,,0,0,0,,{\\k106}เธอ{\\k70}คือ{\\k158}ที่หนึ่ง\nDialogue: 0,0:01:29.01,0:01:35.38,Default,,0,0,0,,{\\k533}ตลอดไป{\\k2}{\\k28}เดิน{\\k24}ไป{\\k50}ด้วยกัน\nDialogue: 0,0:01:36.16,0:01:39.56,Default,,0,0,0,,{\\k50}ป้าย{\\k52}แสง{\\k34}ดาว{\\k42}พราว{\\k32}ฟ้า{\\k16}{\\k24}เปิด{\\k28}เพลง{\\k36}เบา{\\k26}ๆ\nDialogue: 0,0:01:39.97,0:01:44.05,Default,,0,0,0,,{\\k28}แล้ว{\\k48}ยก{\\k28}ตาม{\\k58}จังหวะ{\\k48}ใจ{\\k46}{\\k6}ไม่{\\k20}{\\k2}มี{\\k22}{\\k24}คำ{\\k78}ไหนจะ\nDialogue: 0,0:01:44.05,0:01:46.13,Default,,0,0,0,,{\\k48}บอก{\\k6}ได้{\\k46}{\\k52}หมด{\\k56}ความรู้\nDialogue: 0,0:01:47.07,0:01:48.66,Default,,0,0,0,,{\\k154}ซึ่ง{\\k4}รู้\nDialogue: 0,0:01:49.40,0:01:50.28,Default,,0,0,0,,{\\k4}รู้{\\k18}{\\k6}แค่{\\k18}{\\k24}ว่า{\\k18}เธอ\nDialogue: 0,0:01:53.44,0:01:57.57,Default,,0,0,0,,{\\k36}ทำให้{\\k12}{\\k28}ฉัน{\\k178}ยิ้ม{\\k58}ทุกวัน{\\k40}{\\k30}เธอ{\\k22}คือ{\\k8}ไม้\nDialogue: 0,0:01:57.65,0:01:58.51,Default,,0,0,0,,{\\k64}เล็ก{\\k22}นึง\nDialogue: 0,0:01:59.27,0:02:00.35,Default,,0,0,0,,{\\k66}คนเดียว{\\k36}ใน{\\k6}ใจ\nDialogue: 0,0:02:01.57,0:02:06.01,Default,,0,0,0,,{\\k6}ไม่{\\k34}{\\k4}มี{\\k28}{\\k78}ใคร{\\k50}แทน{\\k62}เธอ{\\k6}ได้{\\k34}{\\k8}ไม่{\\k48}{\\k50}ว่า{\\k36}นาน\nDialogue: 0,0:02:06.01,0:02:06.47,Default,,0,0,0,,{\\k46}เท่าไหร่\nDialogue: 0,0:02:07.39,0:02:08.19,Default,,0,0,0,,{\\k68}จับมือ{\\k12}ฉัน\nDialogue: 0,0:02:18.58,0:02:19.98,Default,,0,0,0,,{\\k8}ไว้{\\k16}{\\k80}แล้วไป{\\k6}โดย{\\k6}กัน{\\k2}{\\k10}เพราะ{\\k6}เธอ{\\k6}คือ\nDialogue: 0,0:02:19.98,0:02:20.28,Default,,0,0,0,,{\\k16}ที่หนึ่ง{\\k2}{\\k12}ตลอดไป\nDialogue: 0,0:02:35.71,0:02:41.99,Default,,0,0,0,,{\\k628}ตลอดไป\nDialogue: 0,0:02:42.47,0:02:45.26,Default,,0,0,0,,{\\k52}เธอ{\\k78}คือ{\\k104}ที่หนึ่ง{\\k24}ของ{\\k20}ฉัน\nDialogue: 0,0:02:49.84,0:02:50.68,Default,,0,0,0,,{\\k30}เธอ{\\k8}คือ{\\k14}ไม้{\\k2}{\\k12}เล็ก{\\k18}นึง\nDialogue: 0,0:02:52.14,0:02:57.56,Default,,0,0,0,,{\\k64}คนเดียว{\\k38}ใน{\\k76}ใจ{\\k54}{\\k40}มี{\\k30}{\\k78}ใคร{\\k50}แจ้ง{\\k58}เธอ{\\k6}ได้{\\k40}{\\k8}ไม่\nDialogue: 0,0:02:58.10,0:02:58.90,Default,,0,0,0,,{\\k40}ว่า{\\k40}นาน\nDialogue: 0,0:02:58.90,0:03:07.13,Default,,0,0,0,,{\\k822}เท่าไหร่\nDialogue: 0,0:03:07.19,0:03:08.75,Default,,0,0,0,,{\\k22}จะ{\\k12}มือ{\\k62}ฉัน{\\k4}ไว้{\\k2}{\\k12}แล้วไป{\\k20}ด้วยกัน{\\k2}{\\k4}โอ้{\\k8}{\\k8}เธอ\nDialogue: 0,0:03:08.75,0:03:08.95,Default,,0,0,0,,{\\k20}คือ\nDialogue: 0,0:03:08.95,0:03:26.38,Default,,0,0,0,,{\\k1743}ที่หนึ่ง\nDialogue: 0,0:03:26.40,0:03:31.80,Default,,0,0,0,,{\\k12}ตลอดไป{\\k2}{\\k60}ตลอดไป{\\k8}{\\k50}เธอ{\\k74}คือ{\\k300}ที่หนึ่ง{\\k8}{\\k26}ของ\nDialogue: 0,0:03:31.80,0:03:31.98,Default,,0,0,0,,{\\k18}ฉัน\n",
+  "aligned": true,
+  "degraded_segment_count": 0,
+  "total_segment_count": 5
+}

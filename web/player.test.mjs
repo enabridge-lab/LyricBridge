@@ -37,7 +37,7 @@ import {
   sanitizePlayerTheme,
   preferredRecorderMime,
   cleanWordText,
-  wantsDemo,
+  demoId,
   googleClientId,
 } from "./player.js";
 
@@ -602,16 +602,18 @@ test("cleanWordText collapses contentEditable whitespace and trims", () => {
   assert.equal(cleanWordText(undefined), "");
 });
 
-// D1: ?demo=1 detection (drives auto-loading the pre-baked, no-backend demo).
-test("wantsDemo is true only for demo=1 and never throws on junk", () => {
-  assert.equal(wantsDemo("?demo=1"), true);
-  assert.equal(wantsDemo("demo=1"), true);          // leading ? optional
-  assert.equal(wantsDemo("?foo=bar&demo=1"), true); // among other params
-  assert.equal(wantsDemo("?demo=0"), false);
-  assert.equal(wantsDemo("?demo=true"), false);     // strictly "1"
-  assert.equal(wantsDemo(""), false);
-  assert.equal(wantsDemo(), false);                 // default arg
-  assert.equal(wantsDemo("%%%not-a-query%%%"), false);
+// D+: ?demo=N detection (drives auto-loading the pre-baked, no-backend demo).
+test("demoId returns '1'|'2' only for demo=1|2 and null otherwise", () => {
+  assert.equal(demoId("?demo=1"), "1");
+  assert.equal(demoId("demo=1"), "1");           // leading ? optional
+  assert.equal(demoId("?demo=2"), "2");
+  assert.equal(demoId("?foo=bar&demo=2"), "2");  // among other params
+  assert.equal(demoId("?demo=0"), null);
+  assert.equal(demoId("?demo=3"), null);         // only 1|2 are real demos
+  assert.equal(demoId("?demo=true"), null);
+  assert.equal(demoId(""), null);
+  assert.equal(demoId(), null);                  // default arg
+  assert.equal(demoId("%%%not-a-query%%%"), null);
 });
 
 // ── Phase A: Google Sign-In helpers ────────────────────────────────────────
