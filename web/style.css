@@ -58,10 +58,10 @@ html.light {
   --line2:  #e3c9f1;
   --text:   #4b4364;
   --dim:    #6f6788;
-  --active: #ff3d97;
-  --accent: #8a5cf0;
-  --accent2:#e8669f;
-  --cyan:   #1399a1;
+  --active: #e01f7e;   /* deepened so pink text/active words clear AA on white */
+  --accent: #6f3fd0;   /* deepened purple — AA for small accent labels on white */
+  --accent2:#c43d77;
+  --cyan:   #0e7d84;   /* deepened teal — AA for code/roman text on white */
   --gold:   #c7892b;
   --good:   #1fae86;
   --ink:    #1a0f2e;
@@ -523,7 +523,13 @@ body.has-lyrics .tools { display: block; }
 
 /* S3 — on-screen lyric size + theme (CSS vars set inline by player.js) */
 .stage { background: var(--player-bg, transparent); border-radius: var(--radius); }
-.lyrics .word { color: var(--player-text, inherit); }
+/* Lyrics track the active theme by default (direct var — a nested var() inside
+   a fallback doesn't reliably re-resolve when the theme class toggles, which
+   left light-theme lyrics white-on-white). A custom display colour only kicks
+   in when player.js actually sets --player-text on <body>; never on the
+   current (active) word, which must stay the neon highlight. */
+.lyrics .word { color: var(--text); }
+body[style*="--player-text"] .lyrics .word:not(.active) { color: var(--player-text); }
 body.psize-sm .lyrics { font-size: 1.3rem; }
 body.psize-md .lyrics { font-size: 1.8rem; }
 body.psize-lg .lyrics { font-size: 2.4rem; }
@@ -650,9 +656,17 @@ body.stage-mode .word.active {
 .lp-hero-title {
   margin: 0 auto; max-width: 20ch; font-size: clamp(2rem, 6vw, 3.1rem); font-weight: 800;
   line-height: 1.15; letter-spacing: .2px;
-  background: var(--title-grad);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
+  color: var(--accent2);  /* visible fallback if background-clip:text is unsupported */
   text-shadow: 0 0 40px rgba(255, 79, 163, .15);
+}
+/* Only clip the gradient into the text where the browser actually supports it,
+   so the headline can never render invisible. */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .lp-hero-title {
+    background: var(--title-grad);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
 }
 .lp-hero-title .en {
   display: block; font-size: clamp(1rem, 2.4vw, 1.25rem); margin-top: .6rem;
