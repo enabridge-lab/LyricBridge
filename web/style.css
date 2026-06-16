@@ -592,6 +592,22 @@ body.stage-mode .word.active {
 }
 .authbar #signOutBtn:hover { border-color: var(--accent); }
 
+/* Phase G: approval gate panel — shown to signed-in-but-unapproved users */
+.access-panel {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .8rem;
+  margin-bottom: 1rem; padding: .9rem 1.1rem;
+  background: var(--panel2); border: 1px solid var(--accent);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.access-panel .access-msg { margin: 0; flex: 1 1 16rem; font-size: .92rem; }
+.access-panel .access-msg .en { display: block; font-size: .78rem; color: var(--dim); }
+.access-panel .access-btn {
+  font: inherit; font-weight: 600; padding: .55rem 1.1rem; border-radius: 8px;
+  border: 0; background: var(--accent); color: #fff; cursor: pointer; white-space: nowrap;
+}
+.access-panel .access-btn:hover:not(:disabled) { background: #5e3bab; }
+.access-panel .access-btn:disabled { opacity: .55; cursor: default; }
+
 /* ════════════════════════════════════════════════════════════════
    Phase A (owner) — full-page sign-in gate on app.html. Opaque overlay
    covers the player until the user signs in with Google. Landing is

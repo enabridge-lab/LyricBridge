@@ -259,6 +259,41 @@ export async function submitKaraokeJob(file, apiBase, fetchImpl = fetch, lang = 
   return res.json();
 }
 
+// Phase G: ask the backend whether this signed-in user is approved to create.
+// GET /me -> {approved, pending}. Forgiving: any non-OK / network error resolves
+// to {approved:false, pending:false} so a flaky /me never strands the UI (the
+// real gate is the backend 403 on /jobs/karaoke, not this hint). A backend with
+// no GOOGLE_CLIENT_ID returns {approved:true} — self-host stays open.
+export async function fetchMe(apiBase, fetchImpl = fetch, token = null) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  try {
+    const res = await fetchImpl(`${apiBase.replace(/\/$/, "")}/me`, {
+      ...(headers ? { headers } : {}),
+    });
+    if (!res.ok) return { approved: false, pending: false };
+    const j = await res.json();
+    return { approved: !!j.approved, pending: !!j.pending };
+  } catch {
+    return { approved: false, pending: false };
+  }
+}
+
+// Phase G: request demo access (POST /access/request). Returns the status string
+// ("pending" | "approved") on 2xx; throws "{stage}: {error}" otherwise so the UI
+// can surface a real failure. Requires the Google token (login-gated endpoint).
+export async function requestAccess(apiBase, fetchImpl = fetch, token = null) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const res = await fetchImpl(`${apiBase.replace(/\/$/, "")}/access/request`, {
+    method: "POST",
+    ...(headers ? { headers } : {}),
+  });
+  if (!res.ok) {
+    throw new Error(await _serverError(res));
+  }
+  const j = await res.json();
+  return j.status || "pending";
+}
+
 // F4: poll GET /jobs/{id} until the job finishes. Resolves with the /karaoke-
 // shaped result payload; throws "{stage}: {error}" when the job failed.
 // `onUpdate` receives every status body (queue_position + stage) for the UI;
@@ -494,6 +529,9 @@ function init() {
     // Phase A: Google Sign-In
     authBar: $("authBar"), authState: $("authState"),
     googleSignIn: $("googleSignIn"), signOutBtn: $("signOutBtn"),
+    // Phase G: approval gate (all optional; guarded so headless/old markup works)
+    accessPanel: $("accessPanel"), accessMsg: $("accessMsg"),
+    accessRequestBtn: $("accessRequestBtn"),
   };
 
   // D4: on a hosted build the meta carries the Modal URL — pre-fill the (still
@@ -617,7 +655,53 @@ function init() {
     setAuthState("เข้าสู่ระบบแล้ว", "Signed in");
     setStatus("เข้าสู่ระบบด้วย Google แล้ว · Signed in", "ok");
     if (wasGated) startApp();                            // run the deferred demo/resume
+    refreshAccess();                                     // Phase G: check approval (async)
   }
+
+  // Phase G: after sign-in, ask the backend if this user is approved to create,
+  // and reflect it in the access panel. Approval gates CREATE only — the public
+  // demo songs play regardless, so we never block them here.
+  async function refreshAccess() {
+    if (!authRequired || !googleToken) { approved = true; return; }  // open backend
+    const base = (els.apiBase?.value || defaultApiBase()).trim();
+    const me = await fetchMe(base, fetch, googleToken);
+    approved = me.approved;
+    renderAccess(me);
+  }
+
+  function renderAccess(me) {
+    // Soft hint: disable the upload input until approved (runKaraoke is the hard
+    // gate). When approved, the normal create flow owns the input's enabled state.
+    if (els.songFile) els.songFile.disabled = !approved;
+    if (!els.accessPanel) return;
+    if (approved) { els.accessPanel.hidden = true; return; }
+    els.accessPanel.hidden = false;
+    if (els.accessRequestBtn) els.accessRequestBtn.disabled = !!me.pending;
+    if (els.accessMsg) {
+      els.accessMsg.textContent = me.pending
+        ? "คำขอกำลังรออนุมัติ — จะสร้างได้เมื่อได้รับอนุมัติ · Your request is pending approval."
+        : "ทดลองสร้างคาราโอเกะต้องได้รับอนุมัติก่อน — กดขอสิทธิ์ทดลอง · Creating a karaoke needs approval.";
+    }
+  }
+
+  els.accessRequestBtn?.addEventListener("click", async () => {
+    const base = (els.apiBase?.value || defaultApiBase()).trim();
+    els.accessRequestBtn.disabled = true;
+    try {
+      const status = await requestAccess(base, fetch, googleToken);
+      if (status === "approved") {            // already approved (idempotent path)
+        approved = true;
+        renderAccess({ approved: true, pending: false });
+        return;
+      }
+      if (els.accessMsg) els.accessMsg.textContent =
+        "ส่งคำขอแล้ว รออนุมัติ · Request sent — waiting for the owner to approve.";
+    } catch (err) {
+      if (els.accessMsg) els.accessMsg.textContent =
+        "ส่งคำขอไม่สำเร็จ · Couldn't send the request — " + err.message;
+      els.accessRequestBtn.disabled = false;
+    }
+  });
 
   // Set the auth-state line as Thai text + an .en English span, via DOM (no
   // innerHTML — keeps this file's XSS-safe textContent convention).
@@ -650,6 +734,9 @@ function init() {
   // short-lived credential). authRequired mirrors the backend's /healthz.
   let googleToken = null;
   let authRequired = false;
+  // Phase G: approval gate. Only meaningful when authRequired (backend has a
+  // GOOGLE_CLIENT_ID). Gates CREATING a karaoke — public demos always play.
+  let approved = false;
   // Owner choice: the WHOLE player page (app.html) sits behind a Google sign-in
   // gate whenever OAuth is configured — the demo and everything else only run
   // after login. Frontend-only gate (the demo assets are public statics, so this
@@ -806,6 +893,15 @@ function init() {
     if (authRequired && !googleToken) {
       setStatus("กรุณาเข้าสู่ระบบด้วย Google ก่อนสร้างคาราโอเกะ · Please sign in with Google first", "error");
       els.authBar?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (els.songFile) els.songFile.value = "";
+      return;
+    }
+    // Phase G: approved users only (the backend also 403s, this is the friendly
+    // pre-check). Public demo songs never reach runKaraoke, so they're unaffected.
+    if (authRequired && googleToken && !approved) {
+      setStatus("บัญชีนี้ยังไม่ได้รับอนุมัติให้ทดลองใช้ — กดขอสิทธิ์ทดลองด้านบน · "
+                + "Your account isn't approved yet — request access above", "error");
+      els.accessPanel?.scrollIntoView({ behavior: "smooth", block: "center" });
       if (els.songFile) els.songFile.value = "";
       return;
     }

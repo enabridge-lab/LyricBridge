@@ -18,6 +18,8 @@ and is monkeypatched in tests.
 from __future__ import annotations
 
 import datetime
+import hmac
+import secrets
 
 # Google's documented issuers for ID tokens (both forms appear in the wild).
 GOOGLE_ISSUERS = {"accounts.google.com", "https://accounts.google.com"}
@@ -129,3 +131,72 @@ def verify_google_id_token(token: str, client_id: str) -> dict:
     if not claims.get("sub"):
         raise AuthError("token has no subject")
     return claims
+
+
+# ── Phase G — approval allowlist (pure, network-free; modal_app holds the Dict) ──
+#
+# The Modal `web` app stores approval state in a durable modal.Dict keyed by:
+#   approved:{sub} -> {email, approved_at}
+#   pending:{sub}  -> {email, name, requested_at, approve_token}
+# These helpers hold the key formatting + the SECURITY-CRITICAL token compare and
+# identifier resolution, so `pytest server/` covers them without importing modal.
+
+
+def approved_key(sub: str) -> str:
+    """Dict key for an approved user. PURE."""
+    return f"approved:{sub}"
+
+
+def pending_key(sub: str) -> str:
+    """Dict key for a pending access request. PURE."""
+    return f"pending:{sub}"
+
+
+def new_approve_token() -> str:
+    """A fresh, unguessable single-use approval token (256 bits, URL-safe)."""
+    return secrets.token_urlsafe(32)
+
+
+def token_matches(provided: str | None, stored: str | None) -> bool:
+    """Constant-time compare of an approval token against the stored one. PURE.
+
+    Returns False (never raises) when either side is missing/empty, so a request
+    with no token — or a pending entry written before tokens existed — can never
+    match. Uses hmac.compare_digest to avoid leaking length/position via timing.
+    """
+    if not provided or not stored:
+        return False
+    return hmac.compare_digest(str(provided), str(stored))
+
+
+def resolve_pending(identifier: str | None, pending: dict) -> str | None:
+    """Resolve an owner-supplied identifier (sub OR email) to a pending `sub`. PURE.
+
+    `pending` maps sub -> entry ({email, ...}). An exact sub match wins; otherwise
+    we match on email case-insensitively. Returns the sub, or None if nothing
+    matches. Owner-facing convenience: emails are easier to paste than subs, but
+    we approve by sub internally (email can change).
+    """
+    if not identifier:
+        return None
+    if identifier in pending:
+        return identifier
+    ident = identifier.strip().lower()
+    for sub, entry in pending.items():
+        email = (entry or {}).get("email")
+        if email and str(email).strip().lower() == ident:
+            return sub
+    return None
+
+
+def notify_cooldown_active(prev_requested_at, now: float, cooldown_sec: int) -> bool:
+    """True when an existing pending request is young enough to SKIP re-notifying
+    the owner (anti-spam). PURE.
+
+    No prior request (`prev_requested_at` is None) → False (send the notify).
+    `cooldown_sec <= 0` disables the cooldown (always notify). Otherwise the
+    notify is suppressed while `now - prev_requested_at < cooldown_sec`.
+    """
+    if prev_requested_at is None or cooldown_sec <= 0:
+        return False
+    return (now - float(prev_requested_at)) < cooldown_sec
