@@ -8,6 +8,9 @@
    it still renders cleanly offline / self-hosted. */
 @import url("https://fonts.googleapis.com/css2?family=Kanit:wght@500;600;700;800&family=Sarabun:wght@400;600;700&display=swap");
 
+/* ── Theme: DARK is the default (:root). LIGHT overrides live in html.light
+   further down. Both themes set the same variable names, so every component
+   that uses var(--…) swaps automatically. ──────────────────────────────── */
 :root {
   /* Stage at night — deep violet-black canvas */
   --bg:     #0c0817;   /* midnight violet */
@@ -24,29 +27,78 @@
   --cyan:   #4be1e6;   /* stage-light cyan */
   --gold:   #ffce5c;   /* spotlight gold */
   --good:   #43e3b4;   /* neon mint */
+  --ink:    #1a0f2e;   /* dark text that sits on the bright accent gradients */
+  --well:   rgba(12, 8, 23, .55);  /* inset wells: inputs, dropzones, chips */
   --radius: 18px;
   --shadow: 0 18px 48px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .03) inset;
   --glow-pink: 0 0 24px rgba(255, 79, 163, .55);
+  --grain-blend: overlay;
+  --grain-opacity: .6;
+
+  /* Full-bleed hero canvas */
+  --page-bg:
+    radial-gradient(820px 540px at 8% -8%,  rgba(255, 79, 163, .30), transparent 60%),
+    radial-gradient(860px 560px at 96% -4%, rgba(75, 225, 230, .20), transparent 58%),
+    radial-gradient(900px 620px at 50% 118%, rgba(255, 206, 92, .16), transparent 60%),
+    radial-gradient(700px 500px at 78% 70%,  rgba(185, 139, 255, .16), transparent 62%),
+    var(--bg);
+  --hero-art-opacity: .14;  /* faint backdrop — the art is atmosphere, not the subject */
+  --hero-scrim: radial-gradient(78% 72% at 50% 46%,
+    rgba(12, 8, 23, .72), rgba(12, 8, 23, .35) 66%, rgba(12, 8, 23, .82));
+  --title-grad: linear-gradient(120deg, #fff 0%, #ffc8e6 45%, #c8b8ff 100%);
+}
+
+/* ── Theme: LIGHT (daytime pastel) — applied via <html class="light"> ────── */
+html.light {
+  --bg:     #fbf6fe;
+  --bg2:    #f4ecfb;
+  --panel:  rgba(255, 255, 255, .82);
+  --panel2: rgba(250, 244, 254, .86);
+  --line:   #ece0f4;
+  --line2:  #e3c9f1;
+  --text:   #4b4364;
+  --dim:    #6f6788;
+  --active: #ff3d97;
+  --accent: #8a5cf0;
+  --accent2:#e8669f;
+  --cyan:   #1399a1;
+  --gold:   #c7892b;
+  --good:   #1fae86;
+  --ink:    #1a0f2e;
+  --well:   rgba(255, 255, 255, .72);
+  --shadow: 0 12px 30px rgba(155, 123, 227, .16), 0 0 0 1px rgba(0, 0, 0, .03) inset;
+  --glow-pink: 0 6px 20px rgba(255, 95, 162, .28);
+  --grain-blend: multiply;
+  --grain-opacity: .25;
+
+  --page-bg:
+    radial-gradient(900px 480px at 12% -6%, rgba(255, 155, 184, .30), transparent 60%),
+    radial-gradient(900px 520px at 92% -4%, rgba(155, 123, 227, .24), transparent 58%),
+    radial-gradient(820px 520px at 50% 108%, rgba(120, 214, 197, .22), transparent 60%),
+    var(--bg);
+  --hero-art-opacity: .2;
+  --hero-scrim: radial-gradient(78% 72% at 50% 46%,
+    rgba(251, 246, 254, .78), rgba(251, 246, 254, .4) 66%, rgba(251, 246, 254, .88));
+  --title-grad: linear-gradient(120deg, #6f49c0 0%, #ff3d97 58%, #b06be0 100%);
 }
 
 * { box-sizing: border-box; }
 
 html { scroll-behavior: smooth; }
+/* clip (not hidden) lets the hero break out to 100vw without a horizontal
+   scrollbar, while not trapping position:fixed overlays the way hidden can. */
+html, body { overflow-x: clip; }
 
 body {
   margin: 0;
   font-family: "Sarabun", "Noto Sans Thai", system-ui, sans-serif;
   color: var(--text);
   line-height: 1.6;
-  background:
-    radial-gradient(820px 540px at 8% -8%,  rgba(255, 79, 163, .30), transparent 60%),
-    radial-gradient(860px 560px at 96% -4%, rgba(75, 225, 230, .20), transparent 58%),
-    radial-gradient(900px 620px at 50% 118%, rgba(255, 206, 92, .16), transparent 60%),
-    radial-gradient(700px 500px at 78% 70%,  rgba(185, 139, 255, .16), transparent 62%),
-    var(--bg);
+  background: var(--page-bg);
   background-attachment: fixed;
   min-height: 100vh;
   position: relative;
+  transition: background-color .35s ease, color .35s ease;
 }
 
 /* Fine film-grain / scan texture over the whole stage for atmosphere */
@@ -55,7 +107,7 @@ body::after {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background-image:
     repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px);
-  mix-blend-mode: overlay; opacity: .6;
+  mix-blend-mode: var(--grain-blend); opacity: var(--grain-opacity);
 }
 body > * { position: relative; z-index: 1; }
 
@@ -74,12 +126,36 @@ small { color: var(--dim); font-weight: 400; }
 
 /* ── Header ──────────────────────────────────────────────────── */
 .app-header {
+  position: relative;
   padding: 1.6rem 1.25rem;
   border-bottom: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(255, 255, 255, .04), transparent);
   backdrop-filter: blur(6px);
 }
 .brand { display: flex; align-items: center; gap: 1rem; max-width: 920px; margin: 0 auto; }
+
+/* Light/dark theme toggle — pinned top-right of the header. */
+.theme-toggle {
+  position: absolute; top: 1.1rem; right: 1.25rem; z-index: 5;
+  display: inline-flex; align-items: center; gap: .45rem;
+  font: inherit; font-size: .85rem; font-weight: 600; line-height: 1;
+  padding: .5rem .8rem; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line2); background: var(--panel); color: var(--text);
+  box-shadow: var(--shadow); backdrop-filter: blur(10px);
+  transition: border-color .15s, transform .12s, box-shadow .15s;
+}
+.theme-toggle:hover { border-color: var(--accent); transform: translateY(-1px); }
+.theme-toggle:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+.theme-toggle .tt-icon { font-size: 1.05rem; }
+.theme-toggle .tt-label { white-space: nowrap; }
+/* Show the icon/label for the theme you'll switch TO. */
+.theme-toggle .tt-moon { display: none; }
+html.light .theme-toggle .tt-moon { display: inline; }
+html.light .theme-toggle .tt-sun  { display: none; }
+@media (max-width: 560px) {
+  .theme-toggle { top: .8rem; right: .8rem; padding: .45rem .55rem; }
+  .theme-toggle .tt-label { display: none; }
+}
 .logo {
   font-size: 2.4rem; line-height: 1;
   filter: drop-shadow(0 0 14px rgba(255, 79, 163, .6));
@@ -158,7 +234,7 @@ main { max-width: 920px; margin: 0 auto; padding: 1.6rem 1.25rem 5rem; }
   padding: 1.5rem 1rem;
   border: 1.5px dashed var(--line2);
   border-radius: 14px;
-  background: rgba(12, 8, 23, .4);
+  background: var(--well);
   transition: border-color .15s, background .15s, transform .1s, box-shadow .15s;
 }
 .dropzone:hover { border-color: var(--accent); background: rgba(185, 139, 255, .08); box-shadow: 0 0 20px rgba(185, 139, 255, .18) inset; }
@@ -188,7 +264,7 @@ main { max-width: 920px; margin: 0 auto; padding: 1.6rem 1.25rem 5rem; }
 .adv-body { margin-top: .6rem; display: grid; gap: .7rem; }
 .field { display: flex; flex-direction: column; gap: .3rem; font-size: .82rem; color: var(--dim); }
 .field input {
-  background: rgba(12, 8, 23, .6); color: var(--text);
+  background: var(--well); color: var(--text);
   border: 1px solid var(--line2); border-radius: 10px; padding: .55rem .65rem; font: inherit; font-size: .85rem;
 }
 .field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(185, 139, 255, .2); }
@@ -215,7 +291,7 @@ audio { width: 100%; border-radius: 10px; }
   gap: 1rem;
   flex-wrap: wrap;
   padding: 0.55rem 0.8rem;
-  background: rgba(12, 8, 23, .45);
+  background: var(--well);
   border: 1px solid var(--line);
   border-radius: 12px;
   margin-top: 0.6rem;
@@ -251,16 +327,16 @@ kbd {
   border-radius: var(--radius);
   background:
     radial-gradient(120% 90% at 50% 0%, rgba(185, 139, 255, .12), transparent 60%),
-    rgba(12, 8, 23, .55);
+    var(--well);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
   backdrop-filter: blur(10px);
 }
-.line { margin: .85rem 0; transition: opacity .3s; color: #6a6088; }
-.word { color: #c8bfe0; transition: color .12s ease, text-shadow .12s ease; }
+.line { margin: .85rem 0; transition: opacity .3s; color: var(--dim); opacity: .65; }
+.word { color: var(--text); opacity: .72; transition: color .12s ease, text-shadow .12s ease, opacity .12s ease; }
 
 /* current word ignites under a neon spotlight */
-.word.active { color: var(--active); text-shadow: 0 0 22px rgba(255, 79, 163, .7), 0 0 40px rgba(255, 79, 163, .35); }
+.word.active { color: var(--active); opacity: 1; text-shadow: 0 0 22px rgba(255, 79, 163, .7), 0 0 40px rgba(255, 79, 163, .35); }
 
 /* empty state */
 .empty { color: var(--dim); display: grid; place-items: center; gap: .5rem; padding: 2.4rem 1rem; }
@@ -274,7 +350,7 @@ kbd {
 .stepdot {
   display: flex; align-items: center; gap: .4rem;
   padding: .38rem .75rem; border-radius: 999px;
-  border: 1px solid var(--line); background: rgba(12, 8, 23, .5); color: var(--dim);
+  border: 1px solid var(--line); background: var(--well); color: var(--dim);
   font-size: .82rem; transition: all .2s;
 }
 .stepdot .stepnum {
@@ -346,11 +422,11 @@ kbd {
   border-radius: 12px;
   font-size: .85rem;
   align-items: center;
-  background: rgba(12, 8, 23, .35);
+  background: var(--well);
 }
 .render-style label { display: inline-flex; align-items: center; gap: 6px; }
 .render-style input[type="number"], .render-style select {
-  background: rgba(12, 8, 23, .6); color: var(--text);
+  background: var(--well); color: var(--text);
   border: 1px solid var(--line2); border-radius: 8px; padding: .25rem .4rem; font: inherit;
 }
 .render-style input[type="number"] { width: 4.5em; }
@@ -527,24 +603,30 @@ body.stage-mode .word.active {
 
 .landing main { padding-bottom: 3rem; }
 
-/* Hero */
-.lp-hero { text-align: center; padding: 3rem 0 1.8rem; position: relative; isolation: isolate; }
-
-/* Hero backdrop art — sits behind the content, faded + radially masked so it
-   melts into the dark canvas and never fights the gradient headline. */
-.lp-hero-art {
-  position: absolute; inset: -12% -6% auto; width: 112%; height: 128%;
-  object-fit: cover; object-position: center 35%;
-  z-index: -2; opacity: .3; pointer-events: none; filter: saturate(1.1);
-  -webkit-mask-image: radial-gradient(120% 92% at 50% 32%, #000 30%, transparent 78%);
-          mask-image: radial-gradient(120% 92% at 50% 32%, #000 30%, transparent 78%);
+/* Hero — full-bleed: breaks out of main's 920px column to span the viewport
+   while the text content stays centered + width-capped. */
+.lp-hero {
+  position: relative; isolation: isolate;
+  width: 100vw; margin-left: calc(50% - 50vw);
+  min-height: min(88vh, 760px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 3.5rem 1.25rem 3rem; overflow: hidden;
 }
-/* Dark scrim over the art so the gradient headline keeps its contrast. */
+
+/* Hero backdrop art — full-bleed, very faint atmosphere behind the headline.
+   Radially masked so it dissolves into the page edges. */
+.lp-hero-art {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: center 38%;
+  z-index: -2; opacity: var(--hero-art-opacity); pointer-events: none; filter: saturate(1.05);
+  -webkit-mask-image: radial-gradient(125% 100% at 50% 42%, #000 38%, transparent 86%);
+          mask-image: radial-gradient(125% 100% at 50% 42%, #000 38%, transparent 86%);
+}
+/* Scrim over the art so the gradient headline keeps full contrast (theme-aware). */
 .lp-hero::before {
-  content: ""; position: absolute; inset: -12% -6% auto; height: 128%;
+  content: ""; position: absolute; inset: 0;
   z-index: -1; pointer-events: none;
-  background: radial-gradient(78% 72% at 50% 42%,
-    rgba(12, 8, 23, .62), rgba(12, 8, 23, .2) 68%, transparent);
+  background: var(--hero-scrim);
 }
 
 /* Neon equalizer flourish above the headline */
@@ -568,7 +650,7 @@ body.stage-mode .word.active {
 .lp-hero-title {
   margin: 0 auto; max-width: 20ch; font-size: clamp(2rem, 6vw, 3.1rem); font-weight: 800;
   line-height: 1.15; letter-spacing: .2px;
-  background: linear-gradient(120deg, #fff 0%, #ffc8e6 45%, #c8b8ff 100%);
+  background: var(--title-grad);
   -webkit-background-clip: text; background-clip: text; color: transparent;
   text-shadow: 0 0 40px rgba(255, 79, 163, .15);
 }
@@ -710,7 +792,7 @@ body.stage-mode .word.active {
 .lp-trust strong, .lp-oss strong { color: var(--accent2); }
 .lp-oss { text-align: center; }
 .lp-oss code, .lp-lead code {
-  background: rgba(12, 8, 23, .6); border: 1px solid var(--line2);
+  background: var(--well); border: 1px solid var(--line2);
   border-radius: 6px; padding: .08rem .4rem; font-size: .9em; color: var(--cyan);
 }
 .lp-cta-end { text-align: center; padding-bottom: 1rem; }
