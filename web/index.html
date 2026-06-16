@@ -4,6 +4,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="LyricBridge — เปลี่ยนเพลงโปรดให้เป็นคาราโอเกะ ซับไทยซิงก์ทีละคำ. Turn any song into word-synced Thai karaoke. Open-source, MIT, self-hostable." />
+  <!-- Social / Open Graph card. Asset is RELATIVE per the GitHub Pages subpath. -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="LyricBridge — คาราโอเกะซับไทยซิงก์ทีละคำ" />
+  <meta property="og:description" content="Turn any song into word-synced Thai karaoke. Open-source, MIT, self-hostable." />
+  <meta property="og:image" content="./img/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="./img/og.png" />
   <title>LyricBridge — คาราโอเกะซับไทยซิงก์ทีละคำ</title>
   <link rel="icon" href="data:," /><!-- no favicon: suppress the auto /favicon.ico request -->
   <!-- Landing is static — no player.js. Assets are RELATIVE (GitHub Pages subpath /LyricBridge/). -->
@@ -26,6 +35,11 @@
   <main id="main">
     <!-- ── Hero ────────────────────────────────────────────────── -->
     <section class="lp-hero" aria-labelledby="hero-h">
+      <!-- Hero backdrop art (./img/hero.webp); a dark scrim in CSS keeps the
+           headline readable on top. Decorative → aria-hidden. -->
+      <img class="lp-hero-art" src="./img/hero.webp" alt="" aria-hidden="true"
+           width="1200" height="670" loading="eager" decoding="async" />
+      <div class="eq" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
       <h2 id="hero-h" class="lp-hero-title">เปลี่ยนเพลงโปรดให้เป็นคาราโอเกะ<br />ซับไทยซิงก์ทีละคำ
         <span class="en">Turn any song into word-synced Thai karaoke.</span>
       </h2>
@@ -51,6 +65,8 @@
       <ul class="lp-demos">
         <li>
           <a class="lp-demo" href="./app.html?demo=1">
+            <img class="lp-demo-thumb" src="./img/card-1.webp" alt="" aria-hidden="true"
+                 width="480" height="480" loading="lazy" decoding="async" />
             <span class="lp-demo-play" aria-hidden="true">▶</span>
             <span class="lp-demo-txt">
               <strong>ฟังตัวอย่าง: หมายเลขหนึ่ง</strong>
@@ -60,6 +76,8 @@
         </li>
         <li>
           <a class="lp-demo" href="./app.html?demo=2">
+            <img class="lp-demo-thumb" src="./img/card-2.webp" alt="" aria-hidden="true"
+                 width="480" height="480" loading="lazy" decoding="async" />
             <span class="lp-demo-play" aria-hidden="true">▶</span>
             <span class="lp-demo-txt">
               <strong>ฟังตัวอย่าง: เก่า</strong>
@@ -89,24 +107,32 @@
       <h2 id="how-h">ทำงานอย่างไร <span class="en">How it works</span></h2>
       <ol class="lp-steps">
         <li class="lp-step">
+          <img class="lp-step-img" src="./img/feat-separate.webp" alt="" aria-hidden="true"
+               width="640" height="640" loading="lazy" decoding="async" />
           <span class="lp-step-num" aria-hidden="true">1</span>
           <h3>อัปเพลง <span class="en">Add a song</span></h3>
           <p>ลากไฟล์เพลงเต็มมาวางหนึ่งไฟล์
             <span class="en">Drop in one full audio file</span></p>
         </li>
         <li class="lp-step">
+          <img class="lp-step-img" src="./img/feat-transcribe.webp" alt="" aria-hidden="true"
+               width="640" height="640" loading="lazy" decoding="async" />
           <span class="lp-step-num" aria-hidden="true">2</span>
           <h3>ตัดเสียงร้อง <span class="en">Remove vocals</span></h3>
           <p>AI (Demucs) แยกดนตรีออกจากเสียงร้อง
             <span class="en">AI (Demucs) separates music from vocals</span></p>
         </li>
         <li class="lp-step">
+          <img class="lp-step-img" src="./img/feat-highlight.webp" alt="" aria-hidden="true"
+               width="640" height="640" loading="lazy" decoding="async" />
           <span class="lp-step-num" aria-hidden="true">3</span>
           <h3>ถอด + จับเวลา <span class="en">Transcribe &amp; time</span></h3>
           <p>Whisper ภาษาไทย + wav2vec2 จับเวลาทีละคำ
             <span class="en">Thai Whisper + wav2vec2 align each word</span></p>
         </li>
         <li class="lp-step">
+          <img class="lp-step-img" src="./img/feat-video.webp" alt="" aria-hidden="true"
+               width="640" height="640" loading="lazy" decoding="async" />
           <span class="lp-step-num" aria-hidden="true">4</span>
           <h3>ร้อง / เซฟวิดีโอ <span class="en">Sing / export</span></h3>
           <p>ร้องตามในเบราว์เซอร์ หรือเซฟวิดีโอคาราโอเกะ
