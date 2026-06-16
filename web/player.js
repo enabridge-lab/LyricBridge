@@ -1431,8 +1431,14 @@ function init() {
     const t = sanitizePlayerTheme(theme);
     document.body.classList.remove("psize-sm", "psize-md", "psize-lg", "psize-xl");
     document.body.classList.add("psize-" + t.size);
-    document.body.style.setProperty("--player-text", t.text || "");
-    document.body.style.setProperty("--player-bg", t.bg || "");
+    // Remove (don't set to "") when there's no custom colour, so the CSS
+    // fallback `var(--player-text, var(--text))` reliably tracks the active
+    // theme. An empty-string custom property is invalid-at-computed-value and
+    // makes lyrics flip to the wrong colour (invisible) per theme.
+    if (t.text) document.body.style.setProperty("--player-text", t.text);
+    else document.body.style.removeProperty("--player-text");
+    if (t.bg) document.body.style.setProperty("--player-bg", t.bg);
+    else document.body.style.removeProperty("--player-bg");
     if (els.themeSize) els.themeSize.value = t.size;
     if (els.themeText && t.text) els.themeText.value = t.text;
     if (els.themeBg && t.bg) els.themeBg.value = t.bg;

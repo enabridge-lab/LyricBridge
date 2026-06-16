@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Theme: apply the saved light/dark choice BEFORE first paint (no flash). -->
+  <script>(function(){try{if((localStorage.getItem("lb-theme")||"dark")==="light")document.documentElement.classList.add("light");}catch(e){}})();</script>
   <!-- D4: single config point for the backend URL. Empty in the repo so a
        self-host clone falls back to http://localhost:8000 (see player.js
        defaultApiBase). The GitHub Pages build sets `content` to the Modal URL
@@ -17,10 +19,15 @@
   <meta name="lyricbridge-google-client-id" content="" />
   <title>LyricBridge — ร้องตามเนื้อทีละคำ</title>
   <link rel="icon" href="data:," /><!-- no favicon: suppress the auto /favicon.ico request -->
-  <link rel="stylesheet" href="style.css?v=2" />
+  <link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
   <header class="app-header">
+    <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false"
+            aria-label="สลับธีมสว่าง/มืด · Toggle light / dark theme">
+      <span class="tt-icon" aria-hidden="true"><span class="tt-sun">☀️</span><span class="tt-moon">🌙</span></span>
+      <span class="tt-label"><span class="tt-sun">สว่าง</span><span class="tt-moon">มืด</span></span>
+    </button>
     <div class="brand">
       <a class="home-link" href="./index.html" title="กลับหน้าแรก · Back to home">← หน้าแรก<span class="en"> · Home</span></a>
       <span class="logo" aria-hidden="true">🎤</span>
@@ -183,9 +190,9 @@
               <option value="xl">ใหญ่มาก · XL</option>
             </select>
             <label for="themeText">สีตัวอักษร <span class="en">Text</span></label>
-            <input id="themeText" type="color" value="#4b4364" />
+            <input id="themeText" type="color" value="#f3eefe" />
             <label for="themeBg">พื้นหลัง <span class="en">Background</span></label>
-            <input id="themeBg" type="color" value="#fbf6fe" />
+            <input id="themeBg" type="color" value="#0c0817" />
           </div>
           <!-- S4 record -->
           <div class="sing-row">
@@ -287,6 +294,20 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Phase L: this is the player page (was index.html). A small "← หน้าแรก"
        link back to the landing keeps navigation obvious on the subpath. -->
-  <script type="module" src="player.js?v=9"></script>
+  <script type="module" src="player.js?v=10"></script>
+  <!-- Light/dark toggle — standalone (kept out of player.js so it works even
+       before the module loads). Theme is pre-applied in <head> to avoid a flash. -->
+  <script>
+    (function () {
+      var btn = document.getElementById("themeToggle");
+      if (!btn) return;
+      btn.setAttribute("aria-pressed", String(document.documentElement.classList.contains("light")));
+      btn.addEventListener("click", function () {
+        var light = document.documentElement.classList.toggle("light");
+        try { localStorage.setItem("lb-theme", light ? "light" : "dark"); } catch (e) {}
+        btn.setAttribute("aria-pressed", String(light));
+      });
+    })();
+  </script>
 </body>
 </html>
