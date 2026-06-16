@@ -42,6 +42,14 @@
       <button id="signOutBtn" type="button" hidden>ออกจากระบบ · Sign out</button>
     </section>
 
+    <!-- ── Phase G: approval gate. Shown to a signed-in but unapproved user;
+         hidden once approved. Public demo songs play regardless of approval. -->
+    <section class="access-panel" id="accessPanel" hidden aria-label="ขอสิทธิ์ทดลอง">
+      <p id="accessMsg" class="access-msg">ทดลองสร้างคาราโอเกะต้องได้รับอนุมัติก่อน — กดขอสิทธิ์ทดลอง
+        <span class="en"> · Creating a karaoke needs approval.</span></p>
+      <button id="accessRequestBtn" type="button" class="access-btn">ขอสิทธิ์ทดลอง · Request access</button>
+    </section>
+
     <!-- ── Step 0: one upload does everything (recommended) ──────── -->
     <section class="oneup" aria-label="อัปโหลดเพลงเดียวจบ">
       <div class="step hero" id="step0">

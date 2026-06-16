@@ -157,6 +157,11 @@ metrics = modal.Dict.from_name("lyricbridge-metrics", create_if_missing=True)
 # Phase A: per-user monthly quota counters, keyed `quota:{google_sub}:{YYYY-MM}`
 # (auth.monthly_quota_key). Not durable across redeploys — owner-accepted.
 quota = modal.Dict.from_name("lyricbridge-quota", create_if_missing=True)
+# Phase G: durable approval allowlist (NO TTL, unlike quota — the allowlist must
+# survive redeploys). Keys (auth.approved_key / auth.pending_key):
+#   approved:{sub} -> {email, approved_at}
+#   pending:{sub}  -> {email, name, requested_at, approve_token}
+access = modal.Dict.from_name("lyricbridge-access", create_if_missing=True)
 
 
 def _bump_metric(field):
@@ -303,14 +308,18 @@ def web():
     NOT server/app/main.py's app (its in-memory stores don't survive the split).
     The response shapes mirror self-host exactly so web/player.js is unchanged.
     """
+    import html
+    import json as _json
     import logging
     import os
     import time
+    import urllib.parse
+    import urllib.request
     import uuid
 
     from fastapi import Body, FastAPI, File, Form, Request, UploadFile
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import JSONResponse, Response
+    from fastapi.responses import HTMLResponse, JSONResponse, Response
 
     from app import auth  # Phase A: Google ID-token verify + quota helpers (reused)
 
@@ -430,6 +439,14 @@ def web():
                 user_sub = auth.verify_claims(claims, google_client_id)
             except auth.AuthError as e:
                 return err(401, f"เข้าสู่ระบบไม่ผ่าน · sign-in failed ({e.reason})", "auth")
+            # Phase G: approval gate. A *verified* user still needs to be on the
+            # durable allowlist before we spend any GPU. Public demos + the landing
+            # never reach here, so they stay open regardless of approval.
+            if access.get(auth.approved_key(user_sub)) is None:
+                return JSONResponse(status_code=403, content={
+                    "error": "บัญชีนี้ยังไม่ได้รับอนุมัติให้ทดลองใช้ — กดขอสิทธิ์แล้วรอการอนุมัติ "
+                             "(your account isn't approved for the demo yet — request access and wait)",
+                    "stage": "approval", "approved": False})
             # per-user monthly quota (replaces the per-IP rate limit when logged in)
             monthly_limit = int(cfg("MONTHLY_QUOTA", "10"))
             qk = auth.monthly_quota_key(user_sub)
@@ -474,6 +491,143 @@ def web():
         _bump_metric("submitted")
         return JSONResponse(status_code=202,
                             content={"job_id": job_id, "status_url": f"/jobs/{job_id}"})
+
+    # ── Phase G — approval gate: request / status / owner one-click approve ──────
+    def authed_user(request: Request):
+        """(sub, claims, error_response). error_response is None on success.
+
+        Verifies the Google ID token the same way /jobs/karaoke does. Callers
+        first confirm a GOOGLE_CLIENT_ID is configured (auth enabled).
+        """
+        token = auth.bearer_token(request.headers.get("authorization"))
+        if not token:
+            return None, None, err(401, "กรุณาเข้าสู่ระบบด้วย Google ก่อน "
+                                        "(sign in with Google first)", "auth")
+        gid = (cfg("GOOGLE_CLIENT_ID", "") or "").strip()
+        try:
+            claims = auth.verify_google_id_token(token, gid)
+            sub = auth.verify_claims(claims, gid)
+        except auth.AuthError as e:
+            return None, None, err(401, f"เข้าสู่ระบบไม่ผ่าน · sign-in failed ({e.reason})", "auth")
+        return sub, claims, None
+
+    def notify_owner(sub, email, name, approve_token):
+        """Best-effort Discord webhook with a one-click approve link. Graceful: if
+        NOTIFY_WEBHOOK is unset (or the POST fails), the pending request is already
+        recorded — just log a WARNING with the approve URL so the owner can act."""
+        web_base = (cfg("WEB_BASE_URL", "https://chkrap47--lyricbridge-web.modal.run")
+                    or "").strip().rstrip("/")
+        approve_url = (f"{web_base}/admin/approve?sub={urllib.parse.quote(sub)}"
+                       f"&t={urllib.parse.quote(approve_token)}")
+        webhook = (cfg("NOTIFY_WEBHOOK", "") or "").strip()
+        if not webhook:
+            logger.warning("NOTIFY_WEBHOOK unset — access request recorded pending for %s "
+                           "(sub=%s); approve via CLI `approve_user` or open: %s",
+                           email or name or "?", sub, approve_url)
+            return
+        who = email or name or sub
+        msg = (f"🔔 ผู้ใช้ **{who}** ขอสิทธิ์ทดลอง LyricBridge\n"
+               f"sub: `{sub}`\nกดเพื่ออนุมัติ/ปฏิเสธ · review & approve: {approve_url}")
+        try:
+            req = urllib.request.Request(
+                webhook, data=_json.dumps({"content": msg}).encode("utf-8"),
+                headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=10).read(1)
+        except Exception as ex:  # noqa: BLE001 — best-effort; request already pending
+            logger.warning("notify webhook failed (%s); request still pending for %s", ex, sub)
+
+    def _admin_page(title, inner, status=200):
+        body = ("<!doctype html><meta charset=utf-8>"
+                "<meta name=viewport content='width=device-width,initial-scale=1'>"
+                f"<title>{html.escape(title)}</title>"
+                "<body style='font-family:system-ui,sans-serif;max-width:34rem;margin:3rem auto;"
+                "padding:0 1.2rem;line-height:1.6;color:#222'>"
+                f"<h2 style='font-weight:700'>LyricBridge · {html.escape(title)}</h2>{inner}</body>")
+        return HTMLResponse(body, status_code=status)
+
+    def _invalid_link_page(status=400):
+        return _admin_page("ลิงก์ไม่ถูกต้อง",
+                           "<p>ลิงก์ไม่ถูกต้อง หมดอายุ หรือถูกใช้ไปแล้ว · "
+                           "This link is invalid, expired, or already used.</p>", status)
+
+    @api.post("/access/request")
+    async def access_request(request: Request):
+        gid = (cfg("GOOGLE_CLIENT_ID", "") or "").strip()
+        if not gid:
+            return err(400, "auth not configured", "auth")
+        sub, claims, e = authed_user(request)
+        if e:
+            return e
+        if access.get(auth.approved_key(sub)) is not None:
+            return JSONResponse(status_code=200, content={"status": "approved"})
+        # Idempotent: reuse an existing pending token so an already-sent approve
+        # link keeps working; otherwise mint a fresh single-use one.
+        existing = access.get(auth.pending_key(sub)) or {}
+        approve_token = existing.get("approve_token") or auth.new_approve_token()
+        access.put(auth.pending_key(sub), {
+            "email": claims.get("email") or "", "name": claims.get("name") or "",
+            "requested_at": time.time(), "approve_token": approve_token})
+        notify_owner(sub, claims.get("email") or "", claims.get("name") or "", approve_token)
+        return JSONResponse(status_code=202, content={"status": "pending"})
+
+    @api.get("/me")
+    async def me(request: Request):
+        gid = (cfg("GOOGLE_CLIENT_ID", "") or "").strip()
+        if not gid:
+            # Auth disabled (self-host) → nothing to gate; report open.
+            return {"approved": True, "pending": False}
+        sub, claims, e = authed_user(request)
+        if e:
+            return e
+        return {"approved": access.get(auth.approved_key(sub)) is not None,
+                "pending": access.get(auth.pending_key(sub)) is not None}
+
+    @api.get("/admin/approve")
+    def admin_approve_page(sub: str = "", t: str = ""):
+        # GET MUST NOT mutate — email/Discord link prefetch (and scanners) hit this
+        # without a human, so auto-approving here would be the classic footgun.
+        # We only render a confirm page; the buttons POST to actually mutate.
+        entry = access.get(auth.pending_key(sub))
+        if entry is None or not auth.token_matches(t, entry.get("approve_token")):
+            return _invalid_link_page()
+        email = html.escape(entry.get("email") or sub)
+        name = html.escape(entry.get("name") or "")
+        s = html.escape(sub)
+        tk = html.escape(t)
+        hidden = f"<input type=hidden name=sub value='{s}'><input type=hidden name=t value='{tk}'>"
+        btn = "padding:.6rem 1.4rem;font-size:1rem;color:#fff;border:0;border-radius:8px;cursor:pointer"
+        inner = (
+            "<p>คำขอสิทธิ์ทดลองจาก · Access request from:</p>"
+            f"<p style='font-size:1.25rem'><b>{email}</b>"
+            + (f" <span style='color:#666'>({name})</span>" if name else "")
+            + f"</p><p style='color:#888;font-size:.8rem'>sub: <code>{s}</code></p>"
+            "<div style='display:flex;gap:1rem;margin-top:1.5rem'>"
+            f"<form method=post action='/admin/approve'>{hidden}"
+            f"<button style='{btn};background:#2e7d32'>✓ อนุมัติ · Approve</button></form>"
+            f"<form method=post action='/admin/deny'>{hidden}"
+            f"<button style='{btn};background:#c62828'>✗ ปฏิเสธ · Deny</button></form></div>")
+        return _admin_page("ยืนยันการอนุมัติ", inner)
+
+    @api.post("/admin/approve")
+    async def admin_approve(sub: str = Form(""), t: str = Form("")):
+        entry = access.get(auth.pending_key(sub))
+        if entry is None or not auth.token_matches(t, entry.get("approve_token")):
+            return _invalid_link_page()
+        access.put(auth.approved_key(sub),
+                   {"email": entry.get("email"), "approved_at": time.time()})
+        access.pop(auth.pending_key(sub))  # single-use: token dies with the pending entry
+        return _admin_page("อนุมัติแล้ว",
+                           f"<p>✅ อนุมัติแล้ว · Approved: <b>{html.escape(entry.get('email') or sub)}</b></p>"
+                           "<p style='color:#666'>ผู้ใช้สร้างคาราโอเกะได้แล้ว · they can create now.</p>")
+
+    @api.post("/admin/deny")
+    async def admin_deny(sub: str = Form(""), t: str = Form("")):
+        entry = access.get(auth.pending_key(sub))
+        if entry is None or not auth.token_matches(t, entry.get("approve_token")):
+            return _invalid_link_page()
+        access.pop(auth.pending_key(sub))
+        return _admin_page("ปฏิเสธแล้ว",
+                           f"<p>ปฏิเสธคำขอแล้ว · Denied: <b>{html.escape(entry.get('email') or sub)}</b></p>")
 
     @api.get("/metrics-lite")
     def metrics_lite():
@@ -667,6 +821,67 @@ def set_control(key: str, value: str = ""):
     control[key] = value
     print(f"control[{key!r}] = {value!r}")
     return {key: value}
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase G — owner CLI (FALLBACK to the one-click approve link). Run e.g.:
+#   PYTHONPATH=server modal run deploy/modal_app.py::list_pending
+#   PYTHONPATH=server modal run deploy/modal_app.py::approve_user --identifier you@gmail.com
+#   PYTHONPATH=server modal run deploy/modal_app.py::deny_user --identifier <sub>
+# ──────────────────────────────────────────────────────────────────────────
+def _pending_map():
+    """sub -> entry for every pending:* key in the access Dict."""
+    out = {}
+    for k in list(access.keys()):
+        ks = str(k)
+        if ks.startswith("pending:"):
+            out[ks.split(":", 1)[1]] = access.get(k) or {}
+    return out
+
+
+@app.function(image=image)
+def list_pending():
+    """Print + return all pending access requests (email + sub)."""
+    rows = []
+    for sub, e in sorted(_pending_map().items(), key=lambda kv: kv[1].get("requested_at") or 0):
+        print(f"{e.get('email') or '(no email)'}  name={e.get('name') or '-'}  sub={sub}")
+        rows.append({"sub": sub, "email": e.get("email"), "name": e.get("name")})
+    if not rows:
+        print("(no pending requests)")
+    return rows
+
+
+@app.function(image=image)
+def approve_user(identifier: str):
+    """Approve a pending user by EMAIL or sub. Sets approved:{sub}, clears pending."""
+    import time
+
+    from app import auth
+
+    sub = auth.resolve_pending(identifier, _pending_map())
+    if sub is None:
+        print(f"✗ no pending request matching {identifier!r}  (try list_pending)")
+        return {"ok": False}
+    entry = access.get(auth.pending_key(sub)) or {}
+    access.put(auth.approved_key(sub), {"email": entry.get("email"), "approved_at": time.time()})
+    access.pop(auth.pending_key(sub))
+    print(f"✓ approved {entry.get('email') or '(no email)'}  sub={sub}")
+    return {"ok": True, "sub": sub, "email": entry.get("email")}
+
+
+@app.function(image=image)
+def deny_user(identifier: str):
+    """Deny/cancel a pending request by EMAIL or sub (just clears pending:{sub})."""
+    from app import auth
+
+    sub = auth.resolve_pending(identifier, _pending_map())
+    if sub is None:
+        print(f"✗ no pending request matching {identifier!r}  (try list_pending)")
+        return {"ok": False}
+    entry = access.get(auth.pending_key(sub)) or {}
+    access.pop(auth.pending_key(sub))
+    print(f"✓ denied {entry.get('email') or '(no email)'}  sub={sub}")
+    return {"ok": True, "sub": sub}
 
 
 @app.function(image=image, schedule=modal.Period(minutes=30))

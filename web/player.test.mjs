@@ -39,6 +39,8 @@ import {
   cleanWordText,
   demoId,
   googleClientId,
+  fetchMe,
+  requestAccess,
 } from "./player.js";
 
 // D4: backend URL resolution — meta override for hosted build, localhost for self-host.
@@ -639,4 +641,58 @@ test("submitKaraokeJob attaches Authorization: Bearer only when a token is given
   // not signed in -> no Authorization header at all (backend may be open)
   await submitKaraokeJob(new Blob(["x"]), "http://h/", fakeFetch, "th", null);
   assert.equal(calls[1].headers, undefined);
+});
+
+
+// ── Phase G: approval gate client helpers ───────────────────────────────────
+
+test("fetchMe returns approval flags and attaches Bearer only with a token", async () => {
+  const calls = [];
+  const fakeFetch = async (url, opts) => {
+    calls.push({ url, opts });
+    return { ok: true, json: async () => ({ approved: true, pending: false }) };
+  };
+  const me = await fetchMe("http://h/", fakeFetch, "tok");
+  assert.deepEqual(me, { approved: true, pending: false });
+  assert.equal(calls[0].url, "http://h/me");               // trailing slash trimmed
+  assert.equal(calls[0].opts.headers.Authorization, "Bearer tok");
+
+  await fetchMe("http://h", fakeFetch, null);
+  assert.equal(calls[1].opts.headers, undefined);          // no token -> no header
+});
+
+test("fetchMe coerces flags to booleans and never throws", async () => {
+  // junk/missing fields -> normalized booleans
+  const m1 = await fetchMe("http://h", async () => ({ ok: true, json: async () => ({}) }));
+  assert.deepEqual(m1, { approved: false, pending: false });
+  // non-OK -> not approved (UI shows request panel; backend is the real gate)
+  const m2 = await fetchMe("http://h", async () => ({ ok: false, json: async () => ({}) }));
+  assert.deepEqual(m2, { approved: false, pending: false });
+  // network error -> swallowed, not approved (never strands the UI)
+  const m3 = await fetchMe("http://h", async () => { throw new Error("offline"); });
+  assert.deepEqual(m3, { approved: false, pending: false });
+});
+
+test("requestAccess POSTs with Bearer and returns the status string", async () => {
+  const calls = [];
+  const fakeFetch = async (url, opts) => {
+    calls.push({ url, opts });
+    return { ok: true, json: async () => ({ status: "pending" }) };
+  };
+  const status = await requestAccess("http://h/", fakeFetch, "tok");
+  assert.equal(status, "pending");
+  assert.equal(calls[0].url, "http://h/access/request");
+  assert.equal(calls[0].opts.method, "POST");
+  assert.equal(calls[0].opts.headers.Authorization, "Bearer tok");
+});
+
+test("requestAccess surfaces the server error on non-OK", async () => {
+  const fakeFetch = async () => ({
+    ok: false, status: 401,
+    json: async () => ({ error: "sign in first", stage: "auth" }),
+  });
+  await assert.rejects(
+    () => requestAccess("http://h", fakeFetch, null),
+    /auth: sign in first/,
+  );
 });
