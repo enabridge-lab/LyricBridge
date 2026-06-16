@@ -526,6 +526,30 @@ body.stage-mode .word.active {
 }
 .lp-feat-icon { font-size: 1.8rem; line-height: 1; }
 
+/* Sample-song picker (Phase D+): 1–2 cards linking to ?demo=N */
+.lp-demos {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: 1rem; grid-template-columns: repeat(2, 1fr);
+}
+@media (max-width: 460px) { .lp-demos { grid-template-columns: 1fr; } }
+.lp-demo {
+  display: flex; align-items: center; gap: .9rem;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow);
+  text-decoration: none; color: inherit; transition: border-color .15s, transform .15s;
+}
+.lp-demo:hover { border-color: var(--accent); transform: translateY(-2px); }
+.lp-demo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lp-demo-play {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 2.4rem; height: 2.4rem; border-radius: 50%; color: #fff; font-size: 1rem;
+  background: linear-gradient(135deg, var(--active), var(--accent2));
+  box-shadow: 0 3px 12px rgba(255, 95, 162, .4);
+}
+.lp-demo-txt { display: flex; flex-direction: column; }
+.lp-demo-txt strong { font-size: 1rem; }
+.lp-demo-txt .en { font-size: .78rem; color: var(--dim); }
+
 /* Trust / OSS / closing blocks */
 .lp-trust p, .lp-oss p { max-width: 64ch; margin: 0 auto .8rem; font-size: .96rem; }
 .lp-trust p .en, .lp-oss p .en { display: block; font-size: .82rem; margin-top: .35rem; }

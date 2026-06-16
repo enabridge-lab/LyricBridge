@@ -13,6 +13,13 @@ python-multipart           # multipart/form-data file upload
 
 faster-whisper             # CPU/GPU ASR with int8 quantization (cheap server)
 whisperx                   # word/char-level forced alignment (wav2vec2)
+# whisperx pulls transformers (4.57.x), which hard-pins huggingface-hub<1.0. But
+# pyannote (a transitive whisperx dep) otherwise drags in huggingface-hub 1.x,
+# which makes `import transformers` raise -> whisperx align never loads and ALL
+# word timing silently degrades to rough sentence-level interpolation
+# (aligned=false). Pin <1.0 so forced alignment actually loads. Remove only when
+# whisperx/transformers support huggingface-hub 1.x.
+huggingface-hub>=0.34,<1.0
 pythainlp                  # Thai word tokenization (newmm) -- REQUIRED: Thai has no spaces
 
 pydantic

@@ -418,14 +418,16 @@ export function preferredRecorderMime(
   return "";
 }
 
-// D1: should the app auto-load the pre-baked demo? True when the URL carries
-// `?demo=1` (landing's "ดูตัวอย่าง" button links to app.html?demo=1). Pure +
-// forgiving so it unit-tests without a browser and never throws on junk input.
-export function wantsDemo(search = "") {
+// D+: which pre-baked demo (if any) should the app auto-load? Returns "1" or
+// "2" when the URL carries `?demo=1` / `?demo=2` (landing's sample-song cards
+// link to app.html?demo=N), else null. Pure + forgiving so it unit-tests
+// without a browser and never throws on junk input.
+export function demoId(search = "") {
   try {
-    return new URLSearchParams(search).get("demo") === "1";
+    const id = new URLSearchParams(search).get("demo");
+    return id === "1" || id === "2" ? id : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -655,7 +657,7 @@ function init() {
   // startup (demo or job-resume) until the gate is cleared.
   let pageGated = false;
   let appStarted = false;
-  let pendingDemo = false;
+  let pendingDemo = null;
   let gisInitialized = false;
   // F2: the /karaoke job whose instrumental is still parked on the server —
   // lets the render button POST /render/{job_id} without re-uploading audio.
@@ -1598,20 +1600,21 @@ function init() {
 
   requestAnimationFrame(highlight);
 
-  // D1: pre-baked demo — play a copyright-safe karaoke example with NO backend,
-  // NO upload, NO GPU. The landing's "ดูตัวอย่าง" button links to app.html?demo=1.
-  // Assets are static under web/demo/. loadModel() handles lyrics; the audio src
-  // points at the local m4a (not payload.instrumental_url), and renderJobId stays
-  // null so the 🎬 render button (which needs a parked server instrumental) stays
-  // hidden for the demo. Degrades gracefully if the assets aren't present yet.
-  async function loadDemo() {
+  // D+: pre-baked demo — play a copyright-safe karaoke example with NO backend,
+  // NO upload, NO GPU. The landing's sample-song cards link to app.html?demo=N.
+  // Assets are static under web/demo/ (demo${id}.json + demo${id}.m4a).
+  // loadModel() handles lyrics; the audio src points at the local m4a (not
+  // payload.instrumental_url), and renderJobId stays null so the 🎬 render button
+  // (which needs a parked server instrumental) stays hidden for the demo.
+  // Degrades gracefully if the assets aren't present yet.
+  async function loadDemo(id = "1") {
     try {
       setStatus("กำลังโหลดตัวอย่าง… · Loading the example", "busy");
-      const res = await fetch("./demo/demo.json");
+      const res = await fetch(`./demo/demo${id}.json`);
       if (!res.ok) throw new Error("demo not found (" + res.status + ")");
       const payload = await res.json();
       loadModel(payload);                       // lyrics + tools (no audio here)
-      els.audio.src = "./demo/demo.m4a";        // local asset — no /jobs/* call
+      els.audio.src = `./demo/demo${id}.m4a`;   // local asset — no /jobs/* call
       els.audio.load();
       document.body.classList.add("has-audio", "has-lyrics");
       renderJobId = null;                       // no parked instrumental → keep 🎬 hidden
@@ -1629,7 +1632,7 @@ function init() {
     if (appStarted) return;
     appStarted = true;
     if (pendingDemo) {
-      await loadDemo();
+      await loadDemo(pendingDemo);
       return;
     }
     // F4: if a job was still running when the page was refreshed, resume polling
@@ -1651,7 +1654,7 @@ function init() {
     }
   }
 
-  pendingDemo = wantsDemo(typeof location !== "undefined" ? location.search : "");
+  pendingDemo = demoId(typeof location !== "undefined" ? location.search : "");
 
   // Whole-page gate decision. If a Google client id is configured in the meta we
   // know SYNCHRONOUSLY that OAuth is on → gate before any content shows (no
