@@ -531,7 +531,11 @@ def web():
         try:
             req = urllib.request.Request(
                 webhook, data=_json.dumps({"content": msg}).encode("utf-8"),
-                headers={"Content-Type": "application/json"})
+                headers={"Content-Type": "application/json",
+                         # Discord 403s the default "Python-urllib/x.y" UA — it
+                         # requires a real User-Agent. Without this the notify
+                         # silently fails (request still records as pending).
+                         "User-Agent": "LyricBridge/1.0 (+https://lyricbridge.enabridge.ai)"})
             urllib.request.urlopen(req, timeout=10).read(1)
         except Exception as ex:  # noqa: BLE001 — best-effort; request already pending
             logger.warning("notify webhook failed (%s); request still pending for %s", ex, sub)
@@ -555,7 +559,7 @@ def web():
                            "This link is invalid, expired, or already used.</p>", status)
 
     @api.post("/access/request")
-    async def access_request(request: Request):
+    def access_request(request: Request):
         gid = (cfg("GOOGLE_CLIENT_ID", "") or "").strip()
         if not gid:
             return err(400, "auth not configured", "auth")
@@ -585,7 +589,7 @@ def web():
         return JSONResponse(status_code=202, content={"status": "pending"})
 
     @api.get("/me")
-    async def me(request: Request):
+    def me(request: Request):
         gid = (cfg("GOOGLE_CLIENT_ID", "") or "").strip()
         if not gid:
             # Auth disabled (self-host) → nothing to gate; report open.
@@ -623,7 +627,7 @@ def web():
         return _admin_page("ยืนยันการอนุมัติ", inner)
 
     @api.post("/admin/approve")
-    async def admin_approve(sub: str = Form(""), t: str = Form("")):
+    def admin_approve(sub: str = Form(""), t: str = Form("")):
         entry = access.get(auth.pending_key(sub))
         if entry is None or not auth.token_matches(t, entry.get("approve_token")):
             return _invalid_link_page()
@@ -635,7 +639,7 @@ def web():
                            "<p style='color:#666'>ผู้ใช้สร้างคาราโอเกะได้แล้ว · they can create now.</p>")
 
     @api.post("/admin/deny")
-    async def admin_deny(sub: str = Form(""), t: str = Form("")):
+    def admin_deny(sub: str = Form(""), t: str = Form("")):
         entry = access.get(auth.pending_key(sub))
         if entry is None or not auth.token_matches(t, entry.get("approve_token")):
             return _invalid_link_page()
