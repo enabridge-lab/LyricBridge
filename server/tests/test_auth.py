@@ -152,3 +152,16 @@ def test_resolve_pending_tolerates_entries_without_email():
     pending = {"sub-1": {}, "sub-2": {"email": None}, "sub-3": {"email": "c@x.com"}}
     assert auth.resolve_pending("c@x.com", pending) == "sub-3"
     assert auth.resolve_pending("anything@x.com", pending) is None
+
+
+def test_notify_cooldown_active_suppresses_repeat_notifies_within_window():
+    # no prior request -> always notify
+    assert auth.notify_cooldown_active(None, now=1000.0, cooldown_sec=600) is False
+    # young pending -> within cooldown -> skip the notify
+    assert auth.notify_cooldown_active(1000.0, now=1300.0, cooldown_sec=600) is True
+    # past the window -> re-notify (a deliberate nudge)
+    assert auth.notify_cooldown_active(1000.0, now=1601.0, cooldown_sec=600) is False
+    # boundary: exactly cooldown elapsed -> no longer active
+    assert auth.notify_cooldown_active(1000.0, now=1600.0, cooldown_sec=600) is False
+    # cooldown disabled -> always notify
+    assert auth.notify_cooldown_active(1000.0, now=1001.0, cooldown_sec=0) is False

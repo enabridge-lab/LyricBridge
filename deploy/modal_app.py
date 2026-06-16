@@ -537,7 +537,11 @@ def web():
             logger.warning("notify webhook failed (%s); request still pending for %s", ex, sub)
 
     def _admin_page(title, inner, status=200):
+        # no-referrer: the approve token rides in the URL; keep it from leaking via
+        # the Referer header on any navigation away from this page (defence in depth
+        # on top of the token being single-use).
         body = ("<!doctype html><meta charset=utf-8>"
+                "<meta name=referrer content=no-referrer>"
                 "<meta name=viewport content='width=device-width,initial-scale=1'>"
                 f"<title>{html.escape(title)}</title>"
                 "<body style='font-family:system-ui,sans-serif;max-width:34rem;margin:3rem auto;"
@@ -564,10 +568,20 @@ def web():
         # link keeps working; otherwise mint a fresh single-use one.
         existing = access.get(auth.pending_key(sub)) or {}
         approve_token = existing.get("approve_token") or auth.new_approve_token()
-        access.put(auth.pending_key(sub), {
-            "email": claims.get("email") or "", "name": claims.get("name") or "",
-            "requested_at": time.time(), "approve_token": approve_token})
-        notify_owner(sub, claims.get("email") or "", claims.get("name") or "", approve_token)
+        now = time.time()
+        # Anti-spam: a user mashing "request access" must not ping the owner on
+        # every click. If a pending request already exists and is younger than the
+        # cooldown, keep it untouched (preserve the original requested_at so the
+        # window doesn't slide) and SKIP the notify. After the cooldown a re-request
+        # re-pings once — a deliberate nudge in case the owner missed the first.
+        cooldown = int(cfg("ACCESS_NOTIFY_COOLDOWN_SEC", "600"))
+        within_cooldown = auth.notify_cooldown_active(
+            existing.get("requested_at"), now, cooldown)
+        if not within_cooldown:
+            access.put(auth.pending_key(sub), {
+                "email": claims.get("email") or "", "name": claims.get("name") or "",
+                "requested_at": now, "approve_token": approve_token})
+            notify_owner(sub, claims.get("email") or "", claims.get("name") or "", approve_token)
         return JSONResponse(status_code=202, content={"status": "pending"})
 
     @api.get("/me")

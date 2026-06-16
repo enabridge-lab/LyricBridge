@@ -187,3 +187,16 @@ def resolve_pending(identifier: str | None, pending: dict) -> str | None:
         if email and str(email).strip().lower() == ident:
             return sub
     return None
+
+
+def notify_cooldown_active(prev_requested_at, now: float, cooldown_sec: int) -> bool:
+    """True when an existing pending request is young enough to SKIP re-notifying
+    the owner (anti-spam). PURE.
+
+    No prior request (`prev_requested_at` is None) → False (send the notify).
+    `cooldown_sec <= 0` disables the cooldown (always notify). Otherwise the
+    notify is suppressed while `now - prev_requested_at < cooldown_sec`.
+    """
+    if prev_requested_at is None or cooldown_sec <= 0:
+        return False
+    return (now - float(prev_requested_at)) < cooldown_sec
