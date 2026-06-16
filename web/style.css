@@ -43,8 +43,9 @@
     radial-gradient(700px 500px at 78% 70%,  rgba(185, 139, 255, .16), transparent 62%),
     var(--bg);
   --hero-art-opacity: .14;  /* faint backdrop — the art is atmosphere, not the subject */
-  --hero-scrim: radial-gradient(78% 72% at 50% 46%,
-    rgba(12, 8, 23, .72), rgba(12, 8, 23, .35) 66%, rgba(12, 8, 23, .82));
+  --hero-scrim: radial-gradient(80% 76% at 50% 46%,
+    rgba(12, 8, 23, .8), rgba(12, 8, 23, .5) 64%, rgba(12, 8, 23, .85));
+  --hero-halo: 0 1px 16px rgba(12, 8, 23, .85);  /* lifts hero copy off the art */
   --title-grad: linear-gradient(120deg, #fff 0%, #ffc8e6 45%, #c8b8ff 100%);
 }
 
@@ -76,9 +77,10 @@ html.light {
     radial-gradient(900px 520px at 92% -4%, rgba(155, 123, 227, .24), transparent 58%),
     radial-gradient(820px 520px at 50% 108%, rgba(120, 214, 197, .22), transparent 60%),
     var(--bg);
-  --hero-art-opacity: .2;
-  --hero-scrim: radial-gradient(78% 72% at 50% 46%,
-    rgba(251, 246, 254, .78), rgba(251, 246, 254, .4) 66%, rgba(251, 246, 254, .88));
+  --hero-art-opacity: .12;
+  --hero-scrim: radial-gradient(82% 80% at 50% 46%,
+    rgba(251, 246, 254, .95), rgba(251, 246, 254, .74) 60%, rgba(251, 246, 254, .92));
+  --hero-halo: 0 1px 14px rgba(251, 246, 254, .95);
   --title-grad: linear-gradient(120deg, #6f49c0 0%, #ff3d97 58%, #b06be0 100%);
 }
 
@@ -673,9 +675,9 @@ body.stage-mode .word.active {
   -webkit-text-fill-color: var(--dim); color: var(--dim); font-weight: 400;
   font-family: "Sarabun", sans-serif;
 }
-.lp-hero-sub { max-width: 56ch; margin: 1.1rem auto 0; font-size: 1.05rem; color: var(--text); }
+.lp-hero-sub { max-width: 56ch; margin: 1.1rem auto 0; font-size: 1.05rem; color: var(--text); text-shadow: var(--hero-halo); }
 .lp-hero-sub .en { display: block; font-size: .88rem; margin-top: .4rem; }
-.lp-note { margin-top: 1rem; font-size: .85rem; color: var(--dim); }
+.lp-note { margin-top: 1rem; font-size: .85rem; color: var(--dim); text-shadow: var(--hero-halo); }
 .lp-note .en { display: inline; }
 
 /* Staggered hero entrance */
@@ -708,7 +710,7 @@ body.stage-mode .word.active {
 .lp-btn.primary .en { color: #2a1430; }
 .lp-btn.primary:hover { transform: translateY(-2px); filter: brightness(1.05); box-shadow: 0 0 38px rgba(255, 79, 163, .65); }
 .lp-btn.ghost {
-  background: rgba(31, 22, 54, .55); color: var(--text); border-color: var(--line2);
+  background: var(--panel); color: var(--text); border-color: var(--line2);
   box-shadow: var(--shadow); backdrop-filter: blur(10px);
 }
 .lp-btn.ghost .en { color: var(--dim); }
